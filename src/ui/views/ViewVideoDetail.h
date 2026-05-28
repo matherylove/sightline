@@ -482,10 +482,10 @@ static inline void VD_DrawRelatedPanel(AppState& state,
             ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
         }
 
-        // Thumbnail placeholder
+        // FIX 4: Thumbnail placeholder — color mas claro, distinguible del fondo negro del video
         ImVec2 thTL = {rowStart.x + PAD, rowStart.y + ITEM_PAD};
         ImVec2 thBR = {thTL.x + THUMB_W, thTL.y + THUMB_H};
-        dl->AddRectFilled(thTL, thBR, IM_COL32(35,35,35,255), 3.f);
+        dl->AddRectFilled(thTL, thBR, IM_COL32(45, 45, 48, 255), 4.f);
 
         if (!it.videoId.empty() && ThumbnailCache::s_instance) {
             IDirect3DTexture9* tex = ThumbnailCache::s_instance->Get(it.videoId);
@@ -797,10 +797,11 @@ inline void DrawVideoDetailView(
 
     // =====================================================================
     // LAYOUT
+    // FIX 6: umbral wide subido a 960px; RW proporcional para evitar clipping
     // =====================================================================
     const float PAD     = 12.0f;
-    const float RW      = 280.0f;
-    const bool  wide    = (w >= 900.0f);
+    const bool  wide    = (w >= 960.0f);
+    const float RW      = wide ? std::min(280.f, w * 0.28f) : 0.f;
     const float LW      = wide ? w - RW - PAD*3.f : w;
 
     const float BH      = 28.0f;
@@ -941,9 +942,10 @@ inline void DrawVideoDetailView(
 
     // -----------------------------------------------------------------------
     // SEEKBAR ROW
+    // FIX 10: sbW reducida por PAD en el lado derecho para no salirse de LW
     // -----------------------------------------------------------------------
     {
-        const float sbX=PAD+2.f, sbW=LW-PAD*2.f-4.f;
+        const float sbX=PAD+2.f, sbW=LW-PAD*2.f-4.f-PAD;
         const float rowY=vidOffY+vidH+SB_GAP;
         float pf=canSeek?(float)(pos/dur):0.f;
         float bf=vds.player.GetBufferPct();
@@ -1001,6 +1003,7 @@ inline void DrawVideoDetailView(
         ImGui::PopStyleColor(3);
 
         ImGui::SameLine(0,10);
+        // FIX 3: dot de estado — mismo offset vertical que los botones de transporte
         {
             ImU32 dc=IM_COL32(90,90,90,255); const char* dt="";
             if (state.streamResolving.load())     { dc=IM_COL32(255,200,0,255); dt="Resolving..."; }
@@ -1013,10 +1016,14 @@ inline void DrawVideoDetailView(
                 case PlayerState::Error:   dc=IM_COL32(255,60,60,255); dt="Error";   break;
                 default: break;
             }
-            ImVec2 dotP=ImGui::GetCursorScreenPos(); dotP.y+=(BH-10.f)*.5f;
-            dlTop->AddCircleFilled({dotP.x+5,dotP.y+5},5.f,dc);
+            ImVec2 dotBase=ImGui::GetCursorScreenPos();
+            // Alinear el dot con el centro vertical del boton BH
+            float dotOffY = (BH - 10.f) * .5f;
+            ImVec2 dotP = {dotBase.x + 5.f, dotBase.y + dotOffY + 5.f};
+            dlTop->AddCircleFilled(dotP, 5.f, dc);
             ImGui::Dummy({12,BH});
-            if (dt[0]&&ImGui::IsMouseHoveringRect(dotP,{dotP.x+12,dotP.y+12})) ImGui::SetTooltip("%s",dt);
+            if (dt[0]&&ImGui::IsMouseHoveringRect({dotBase.x,dotBase.y},{dotBase.x+12,dotBase.y+BH}))
+                ImGui::SetTooltip("%s",dt);
         }
 
         const float VOL_W=90.f, QUAL_W=130.f, MG=6.f;
@@ -1058,29 +1065,29 @@ inline void DrawVideoDetailView(
 
     // -----------------------------------------------------------------------
     // ACTION ROW  [v] Download   [+] Favorite   [^] Window   [/] Fullscreen
+    // FIX 2: botones con padding lateral + FrameRounding=4 (no tocan el borde)
     // -----------------------------------------------------------------------
     {
         float actRowY=ctrRowY+CTR_H;
-        ImGui::SetCursorPos({0,actRowY});
-        float btnW=(LW)/4.f;
-        // Botones de accion — coherentes con el tema
+        float actBtnW=(LW - PAD*2.f) / 4.f;
+        ImGui::SetCursorPos({PAD, actRowY});
         ImGui::PushStyleColor(ImGuiCol_Button,        Theme::COL_SURFACE2);
         ImGui::PushStyleColor(ImGuiCol_ButtonHovered, Theme::COL_ACCENT_SOFT);
         ImGui::PushStyleColor(ImGuiCol_ButtonActive,  Theme::COL_ACCENT_V4);
-        ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding,0);
+        ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 4.f);
 
-        if (ImGui::Button("[v] Download",{btnW,BH}))
+        if (ImGui::Button("[v] Download",{actBtnW,BH}))
             vds.dlDialog.open=true;
 
         ImGui::SameLine(0,0);
         bool isFav = PersistentData::IsInPlaylist("Favorites", vds.videoId);
-        if (ImGui::Button(isFav?"[-] Favorite":"[+] Favorite",{btnW,BH})) {
+        if (ImGui::Button(isFav?"[-] Favorite":"[+] Favorite",{actBtnW,BH})) {
             if (isFav) PersistentData::RemoveFromPlaylist("Favorites", vds.videoId);
             else       PersistentData::AddToPlaylist("Favorites", vds.videoId, vds.title);
         }
 
         ImGui::SameLine(0,0);
-        if (ImGui::Button("[^] Window",{btnW,BH})) {
+        if (ImGui::Button("[^] Window",{actBtnW,BH})) {
             if (!vds.popup.open&&!vds.videoId.empty()&&!vds.streamUrl.empty()) {
                 double startPos=vds.player.GetPosition();
                 vds.popup.startPos=startPos;
@@ -1089,7 +1096,7 @@ inline void DrawVideoDetailView(
             }
         }
         ImGui::SameLine(0,0);
-        if (ImGui::Button("[/] Fullscreen",{btnW,BH}))
+        if (ImGui::Button("[/] Fullscreen",{actBtnW,BH}))
             vds.fullscreen=!vds.fullscreen;
 
         ImGui::PopStyleVar();
@@ -1104,13 +1111,12 @@ inline void DrawVideoDetailView(
     if (botH > 10.f) {
         ImGui::SetCursorPos({0,topZoneH});
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding,{0,0});
-        // Panel inferior — usar COL_CARD del tema
         ImGui::PushStyleColor(ImGuiCol_ChildBg, Theme::COL_CARD);
         ImGui::BeginChild("##vd_bot",{LW,botH},false,
             ImGuiWindowFlags_NoScrollbar|ImGuiWindowFlags_NoScrollWithMouse);
         ImGui::PopStyleColor(); ImGui::PopStyleVar();
 
-        // Tab bar
+        // FIX 8: Tab bar con FrameRounding=3 para bordes mas suaves
         const int NTABS=(int)VideoDetailTab::COUNT;
         float tabW=LW/(float)NTABS;
         ImGui::SetCursorPos({0,0});
@@ -1121,7 +1127,7 @@ inline void DrawVideoDetailView(
             ImGui::PushStyleColor(ImGuiCol_ButtonHovered,
                 active?Theme::COL_ACCENT_V4:Theme::COL_CONTRAST_V4);
             ImGui::PushStyleColor(ImGuiCol_ButtonActive, Theme::COL_ACCENT_HOV_V4);
-            ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding,0);
+            ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 3.f);
             if (ImGui::Button(kVDTabs[ti],{tabW,BH}))
                 vds.activeTab=(VideoDetailTab)ti;
             ImGui::PopStyleVar();
@@ -1146,7 +1152,7 @@ inline void DrawVideoDetailView(
             if (!vds.title.empty()) ImGui::TextWrapped("%s",vds.title.c_str());
             ImGui::PopStyleColor();
 
-            // Channel
+            // Channel name
             if (!vds.channelName.empty()) {
                 ImGui::SetCursorPosX(PAD);
                 ImGui::PushStyleColor(ImGuiCol_Text,Theme::COL_ACCENT_V4);
@@ -1159,8 +1165,9 @@ inline void DrawVideoDetailView(
                 ImGui::PopStyleColor();
             }
 
-            // Subscribe button
-            ImGui::SameLine(0,8);
+            // FIX 7: Subscribe button en linea propia (NewLine) para no chocar con el canal
+            ImGui::NewLine();
+            ImGui::SetCursorPosX(PAD);
             ImGui::PushStyleColor(ImGuiCol_Button,        Theme::COL_SURFACE2);
             ImGui::PushStyleColor(ImGuiCol_ButtonHovered, Theme::COL_ACCENT_SOFT);
             ImGui::PushStyleColor(ImGuiCol_ButtonActive,  Theme::COL_ACCENT_V4);
@@ -1168,11 +1175,11 @@ inline void DrawVideoDetailView(
                 ImGui::SetTooltip("Subscribe not implemented");
             ImGui::PopStyleColor(3);
 
-            // View count / duration
+            // FIX 1: viewCount ya incluye "views" desde InnerTube — no concatenar " views"
             ImGui::SetCursorPosX(PAD);
             std::string meta;
-            if (!vds.viewCount.empty()) meta+=vds.viewCount+" views";
-            if (!vds.duration.empty())  { if (!meta.empty()) meta+=" - "; meta+=vds.duration; }
+            if (!vds.viewCount.empty()) meta += vds.viewCount;
+            if (!vds.duration.empty())  { if (!meta.empty()) meta += " - "; meta += vds.duration; }
             if (!meta.empty()) ImGui::TextColored(Theme::COL_TEXT_DIM_V4,"%s",meta.c_str());
 
             ImGui::Spacing();
@@ -1206,24 +1213,26 @@ inline void DrawVideoDetailView(
         float rpX=LW+PAD*2.f, rpY=0.f, rpH=h;
         ImGui::SetCursorPos({rpX,rpY});
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding,{0,0});
-        // Panel derecho — usar COL_CARD del tema
         ImGui::PushStyleColor(ImGuiCol_ChildBg, Theme::COL_CARD);
         ImGui::BeginChild("##vd_right",{RW,rpH},false,
             ImGuiWindowFlags_NoScrollbar|ImGuiWindowFlags_NoScrollWithMouse);
         ImGui::PopStyleColor(); ImGui::PopStyleVar();
 
-        // Search bar
+        // FIX 5: Search bar con borde visible (FrameBorderSize=1)
         ImGui::SetCursorPos({0,0});
         {
             float sbW2=RW-PAD*2.f;
             ImGui::SetCursorPos({PAD,8.f});
             ImGui::PushStyleColor(ImGuiCol_FrameBg,       Theme::COL_SURFACE2);
             ImGui::PushStyleColor(ImGuiCol_FrameBgHovered,Theme::COL_CONTRAST_V4);
+            ImGui::PushStyleColor(ImGuiCol_Border,        Theme::COL_CONTRAST_V4);
+            ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 1.f);
             ImGui::SetNextItemWidth(sbW2);
             static char srchBuf[256]={};
             bool enter=ImGui::InputText("##vd_srch",srchBuf,sizeof(srchBuf),
                 ImGuiInputTextFlags_EnterReturnsTrue);
-            ImGui::PopStyleColor(2);
+            ImGui::PopStyleVar();
+            ImGui::PopStyleColor(3);
             ImGui::SameLine(0,4);
             ImGui::PushStyleColor(ImGuiCol_Button,        Theme::COL_ACCENT_V4);
             ImGui::PushStyleColor(ImGuiCol_ButtonHovered, Theme::COL_ACCENT_HOV_V4);
@@ -1241,9 +1250,10 @@ inline void DrawVideoDetailView(
         ImGui::TextColored(Theme::COL_TEXT_DIM_V4,"Up Next");
         ImGui::Spacing();
 
+        // FIX 9: altura del child ##vd_rel correcta (80px para search bar + label + spacing)
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding,{0,0});
         ImGui::PushStyleColor(ImGuiCol_ChildBg,{0,0,0,0});
-        ImGui::BeginChild("##vd_rel",{RW,rpH-60.f},false,0);
+        ImGui::BeginChild("##vd_rel",{RW,rpH-80.f},false,0);
         ImGui::PopStyleColor(); ImGui::PopStyleVar();
 
         VD_DrawRelatedPanel(state,vds,RW,PAD);
