@@ -1073,9 +1073,11 @@ inline void DrawVideoDetailView(
             vds.dlDialog.open=true;
 
         ImGui::SameLine(0,0);
-        bool isFav=PersistentData::IsFavorite(vds.videoId);
-        if (ImGui::Button(isFav?"[-] Favorite":"[+] Favorite",{btnW,BH}))
-            PersistentData::ToggleFavorite(vds.videoId,vds.title);
+        bool isFav = PersistentData::IsInPlaylist("Favorites", vds.videoId);
+        if (ImGui::Button(isFav?"[-] Favorite":"[+] Favorite",{btnW,BH})) {
+            if (isFav) PersistentData::RemoveFromPlaylist("Favorites", vds.videoId);
+            else       PersistentData::AddToPlaylist("Favorites", vds.videoId, vds.title);
+        }
 
         ImGui::SameLine(0,0);
         if (ImGui::Button("[^] Window",{btnW,BH})) {
@@ -1150,9 +1152,9 @@ inline void DrawVideoDetailView(
                 ImGui::PushStyleColor(ImGuiCol_Text,Theme::COL_ACCENT_V4);
                 if (ImGui::Selectable(vds.channelName.c_str(),false,
                         ImGuiSelectableFlags_None,{0,0})) {
-                    state.searchQuery="@"+vds.channelId;
-                    state.searchPending=true;
-                    state.activePage=AppPage::Search;
+                    snprintf(state.searchBuf, sizeof(state.searchBuf),
+                             "@%s", vds.channelId.c_str());
+                    state.activePage = AppPage::Search;
                 }
                 ImGui::PopStyleColor();
             }
@@ -1229,9 +1231,8 @@ inline void DrawVideoDetailView(
             bool go=ImGui::Button("Search",{0,0});
             ImGui::PopStyleColor(3);
             if ((enter||go)&&srchBuf[0]) {
-                state.searchQuery=srchBuf;
-                state.searchPending=true;
-                state.activePage=AppPage::Search;
+                snprintf(state.searchBuf, sizeof(state.searchBuf), "%s", srchBuf);
+                state.activePage = AppPage::Search;
             }
         }
 
@@ -1254,7 +1255,7 @@ inline void DrawVideoDetailView(
     // =====================================================================
     // Download dialog
     // =====================================================================
-    DrawDownloadDialog(vds.dlDialog, vds.videoId, vds.title);
+    DrawDownloadDialog(vds.dlDialog, mainHwnd);
 
     ImGui::End(); // ##vd
 }
