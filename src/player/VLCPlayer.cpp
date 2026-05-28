@@ -14,6 +14,7 @@ void VLCPlayer::ReleaseMedia() {
     m_position.store(0.0f);
     m_duration.store(0.0f);
     m_bufferPct.store(0.0f);
+    m_savedVideoTrack = 0;
 }
 
 void VLCPlayer::TearDown() {
@@ -79,7 +80,6 @@ void VLCPlayer::OnEvent(const libvlc_event_t* ev, void* ud) {
             self->m_position.store(ev->u.media_player_position_changed.new_position);
             break;
         case libvlc_MediaPlayerBuffering:
-            // new_cache is 0..100
             self->m_bufferPct.store(ev->u.media_player_buffering.new_cache / 100.f);
             break;
         case libvlc_MediaPlayerEncounteredError:
@@ -142,6 +142,17 @@ void VLCPlayer::SeekTo(double seconds) {
 
 void VLCPlayer::SetVolume(int v) {
     if (m_mp) libvlc_audio_set_volume(m_mp, v);
+}
+
+// Disable/enable the video track without stopping audio (used on minimize)
+void VLCPlayer::SetVideoEnabled(bool enabled) {
+    if (!m_mp) return;
+    if (!enabled) {
+        m_savedVideoTrack = libvlc_video_get_track(m_mp);
+        libvlc_video_set_track(m_mp, -1);
+    } else {
+        libvlc_video_set_track(m_mp, m_savedVideoTrack >= 0 ? m_savedVideoTrack : 0);
+    }
 }
 
 double VLCPlayer::GetPosition() const {

@@ -24,6 +24,9 @@ public:
     void SeekTo(double seconds);
     void SetVolume(int vol0to100);
 
+    // Disable/enable the video track without stopping audio (used on minimize)
+    void SetVideoEnabled(bool enabled);
+
     double      GetPosition()  const;
     double      GetDuration()  const;
     float       GetBufferPct() const;   // 0..1 buffer fill
@@ -39,6 +42,7 @@ private:
     libvlc_event_manager_t* m_em     = nullptr;
     HWND                    m_hwnd   = NULL;
     std::string             m_error;
+    int                     m_savedVideoTrack = 0;
 
     std::atomic<float> m_position { 0.0f };
     std::atomic<float> m_duration { 0.0f };
