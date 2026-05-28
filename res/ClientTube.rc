@@ -1,0 +1,25 @@
+// ClientTube.rc
+// Resource script for ClientTube
+// Embeds LAV Filters XP-compatible binaries (GPL-2.0).
+// Source build: https://github.com/3dyd/LAVFiltersXP (0.70.2 x86)
+//
+// IMPORTANT: Before building, copy the LAV x86 DLLs into:
+//   third_party/lav/
+// Required files:
+//   LAVSplitter.ax   LAVVideo.ax   LAVAudio.ax
+//   avutil-55.dll    avcodec-57.dll   avformat-57.dll
+//   swscale-4.dll    swresample-2.dll
+//
+// These files are NOT included in the repo (binaries / GPL compliance).
+// Add them to third_party/lav/ before compiling.
+
+#include "../src/player/LavBootstrap.h"
+
+IDR_LAV_SPLITTER    RCDATA  "../third_party/lav/LAVSplitter.ax"
+IDR_LAV_VIDEO       RCDATA  "../third_party/lav/LAVVideo.ax"
+IDR_LAV_AUDIO       RCDATA  "../third_party/lav/LAVAudio.ax"
+IDR_AV_UTIL         RCDATA  "../third_party/lav/avutil-55.dll"
+IDR_AV_CODEC        RCDATA  "../third_party/lav/avcodec-57.dll"
+IDR_AV_FORMAT       RCDATA  "../third_party/lav/avformat-57.dll"
+IDR_SW_SCALE        RCDATA  "../third_party/lav/swscale-4.dll"
+IDR_SW_RESAMPLE     RCDATA  "../third_party/lav/swresample-2.dll"

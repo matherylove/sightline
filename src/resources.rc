@@ -1,0 +1,8 @@
+// resources.rc
+// Embeds ffmpeg.exe and ffprobe.exe as binary resources.
+// These files must exist at build time in the build/ directory.
+
+#include "resource.h"
+
+IDR_FFMPEG_EXE  RCDATA "ffmpeg.exe"
+IDR_FFPROBE_EXE RCDATA "ffprobe.exe"
