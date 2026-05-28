@@ -279,20 +279,12 @@ DWORD WINAPI MainWindow::StreamResolveProc(LPVOID param) {
     std::string url = InnerTube::GetStreamUrl(videoId);
     CTLogger::LogC('I', "[StreamResolve] result (first 120): %.120s", url.c_str());
 
-    // FIX Bug 1: stamp videoId alongside videoUrl so the guard
-    // `pendingPlay.videoId == vds.videoId` in ViewVideoDetail can pass.
-    // Without this the stream URL was written but never absorbed because
-    // pendingPlay.videoId was cleared on the previous playRequested cycle.
     self->m_state.pendingPlay.videoId  = videoId;
     self->m_state.pendingPlay.videoUrl = url;
     self->m_state.streamResolving.store(false);
     return 0;
 }
 
-// ---------------------------------------------------------------------------
-// VP9ResolveProc  -  fetches the VP9 quality list on a background thread.
-// Writes into pendingPlay only if the videoId hasn't changed while we ran.
-// ---------------------------------------------------------------------------
 DWORD WINAPI MainWindow::VP9ResolveProc(LPVOID param) {
     VP9Task* task = (VP9Task*)param;
     MainWindow* self    = task->self;
@@ -303,7 +295,6 @@ DWORD WINAPI MainWindow::VP9ResolveProc(LPVOID param) {
     std::vector<VP9Quality> qualities = InnerTube::GetVP9Qualities(videoId);
     CTLogger::LogC('I', "[VP9Resolve] got %d VP9 qualities", (int)qualities.size());
 
-    // Only commit if this is still the active video request
     if (self->m_state.pendingPlay.videoId == videoId) {
         self->m_state.pendingPlay.vp9Qualities        = qualities;
         self->m_state.pendingPlay.vp9QualitiesReady   = true;
@@ -315,7 +306,6 @@ DWORD WINAPI MainWindow::VP9ResolveProc(LPVOID param) {
 void MainWindow::DoResolveStream(const std::string& videoId) {
     if (m_state.streamResolving.load()) return;
 
-    // Reset VP9 state for the new video
     m_state.pendingPlay.vp9Qualities.clear();
     m_state.pendingPlay.vp9QualitiesReady   = false;
     m_state.pendingPlay.vp9QualitiesLoading = true;
@@ -327,7 +317,6 @@ void MainWindow::DoResolveStream(const std::string& videoId) {
     m_state.streamResolving.store(true);
     CTLogger::LogC('I', "[MainWindow] launching StreamResolveProc + VP9ResolveProc for %s", videoId.c_str());
 
-    // Thread 1: main stream URL
     StreamTask* st = new StreamTask{ this, videoId };
     m_hStreamThread = CreateThread(NULL, 0, StreamResolveProc, st, 0, NULL);
     if (!m_hStreamThread) {
@@ -338,7 +327,6 @@ void MainWindow::DoResolveStream(const std::string& videoId) {
         delete st;
     }
 
-    // Thread 2: VP9 quality list (independent; non-blocking on main loop)
     VP9Task* vt = new VP9Task{ this, videoId };
     m_hVP9Thread = CreateThread(NULL, 0, VP9ResolveProc, vt, 0, NULL);
     if (!m_hVP9Thread) {
@@ -356,7 +344,8 @@ void MainWindow::DoResolveStream(const std::string& videoId) {
 void MainWindow::DrawTopBar(float w) {
     const float TOP_H  = 48.0f;
     const float BTN_W  = 40.0f;
-    const float SRCH_W = 200.0f;
+    // Slightly wider search field so it doesn't feel cramped
+    const float SRCH_W = 220.0f;
     const float SBTN_W = 76.0f;
     const float GAP    = 6.0f;
     const float R_PAD  = 8.0f;
@@ -365,12 +354,17 @@ void MainWindow::DrawTopBar(float w) {
     ImGui::SetNextWindowPos(ImVec2(0, 0));
     ImGui::SetNextWindowSize(ImVec2(w, TOP_H));
     ImGui::PushStyleColor(ImGuiCol_WindowBg, Theme::COL_CARD);
+    // FIX: NoNav + NoFocusOnAppearing prevent the InputText focus state from
+    // leaking into subsequent child windows (##vd_right), which was causing
+    // a ghost copy of the search box to appear inside the Up Next panel.
     ImGui::Begin("##topbar", NULL,
-        ImGuiWindowFlags_NoTitleBar  |
-        ImGuiWindowFlags_NoResize    |
-        ImGuiWindowFlags_NoMove      |
-        ImGuiWindowFlags_NoScrollbar |
-        ImGuiWindowFlags_NoBringToFrontOnFocus);
+        ImGuiWindowFlags_NoTitleBar          |
+        ImGuiWindowFlags_NoResize            |
+        ImGuiWindowFlags_NoMove              |
+        ImGuiWindowFlags_NoScrollbar         |
+        ImGuiWindowFlags_NoBringToFrontOnFocus |
+        ImGuiWindowFlags_NoNav               |
+        ImGuiWindowFlags_NoFocusOnAppearing);
     ImGui::PopStyleColor();
 
     float itemY = (TOP_H - 28.0f) * 0.5f;
@@ -472,32 +466,20 @@ void MainWindow::DrawDrawer(float h) {
 void MainWindow::DrawContent(float, float topH, float w, float h) {
     float cx = 0, cy = topH, cw = w, ch = h - topH;
 
-    // Always drain async video-info regardless of active page
     DrainSearchViewInfo(m_state, m_searchViewState);
 
-    // Absorb a pending related-thread handle so the destructor can join it
     if (m_state.pendingRelated.hThread != NULL) {
         if (m_hRelatedThread) CloseHandle(m_hRelatedThread);
         m_hRelatedThread = m_state.pendingRelated.hThread;
         m_state.pendingRelated.hThread = NULL;
     }
 
-    // Only kick off the stream resolver here — do NOT clear playRequested.
-    // DrawVideoDetailView consumes the flag and copies metadata into vds.
     if (m_state.playRequested && !m_state.pendingPlay.videoId.empty()) {
         CTLogger::LogC('I', "[MainWindow] playRequested -> videoId=%s",
             m_state.pendingPlay.videoId.c_str());
         DoResolveStream(m_state.pendingPlay.videoId);
-        // NOTE: playRequested is intentionally left true here so that
-        // DrawVideoDetailView can read it and copy title/channelName/etc.
-        // into vds before clearing it itself.
     }
 
-    // ---------------------------------------------------------------------------
-    // When VP9 qualities arrive from the background thread, apply them to the
-    // VideoDetail view.  Guard: apply only when 0 or 1 quality slots exist
-    // (0 = VP9 thread beat the stream resolver; 1 = only the Auto slot is present).
-    // ---------------------------------------------------------------------------
     if (m_state.pendingPlay.vp9QualitiesReady &&
         m_state.activePage == AppPage::VideoDetail &&
         m_videoDetailState.qualities.size() <= 1)
@@ -514,13 +496,6 @@ void MainWindow::DrawContent(float, float topH, float w, float h) {
         VD_ApplyVP9Qualities(m_videoDetailState, opts);
     }
 
-    // ---------------------------------------------------------------------------
-    // FIX: Tick PiP popup seek pendiente cada frame.
-    // Antes el seek solo se intentaba en DrawVideoDetailView pero si VLC tardaba
-    // en abrir el stream (estado != Playing en ese frame) el seek se perdia.
-    // Ahora se drena aqui cada frame hasta que el player del popup este Playing
-    // y la duracion sea valida.
-    // ---------------------------------------------------------------------------
     {
         PopupPlayerState& pop = m_videoDetailState.popup;
         if (pop.open && pop.seekPending && !pop.seekDone && pop.player) {
@@ -533,12 +508,10 @@ void MainWindow::DrawContent(float, float topH, float w, float h) {
                 pop.seekDone    = true;
             }
         }
-        // Cleanup PiP window if user closed it externally
         if (pop.open && pop.hwnd && !IsWindow(pop.hwnd)) {
             if (pop.player) {
                 double resumePos = pop.player->GetPosition();
                 pop.player->Stop();
-                // Resume main player from where PiP was
                 if (m_videoDetailState.playerInited && resumePos > 0.5) {
                     m_videoDetailState.player.Play();
                     m_videoDetailState.seekPos2     = resumePos;
@@ -573,9 +546,6 @@ void MainWindow::DrawContent(float, float topH, float w, float h) {
             DrawVideoDetailView(m_state, m_videoDetailState,
                 m_currentVideoTitle.c_str(), cx, cy, cw, ch, m_hWnd,
                 m_state.activePage == AppPage::VideoDetail);
-            // FIX: DrawDownloadDialog debe llamarse aqui, en el mismo frame
-            // que DrawVideoDetailView. Sin esta llamada el boton de descarga
-            // seteaba dlDialog.open=true pero el dialogo nunca se renderizaba.
             DrawDownloadDialog(m_videoDetailState.dlDialog, m_hWnd);
             break;
         case AppPage::Channel:
@@ -615,12 +585,15 @@ void MainWindow::DrawStatusBar(float w, float h) {
     ImGui::SetNextWindowPos(ImVec2(0, h - BAR_H));
     ImGui::SetNextWindowSize(ImVec2(w, BAR_H));
     ImGui::PushStyleColor(ImGuiCol_WindowBg, Theme::COL_CARD);
+    // FIX: NoNav prevents focus from leaking into/out of the status bar
     ImGui::Begin("##statusbar", NULL,
-        ImGuiWindowFlags_NoTitleBar  |
-        ImGuiWindowFlags_NoResize    |
-        ImGuiWindowFlags_NoMove      |
-        ImGuiWindowFlags_NoScrollbar |
-        ImGuiWindowFlags_NoBringToFrontOnFocus);
+        ImGuiWindowFlags_NoTitleBar          |
+        ImGuiWindowFlags_NoResize            |
+        ImGuiWindowFlags_NoMove              |
+        ImGuiWindowFlags_NoScrollbar         |
+        ImGuiWindowFlags_NoBringToFrontOnFocus |
+        ImGuiWindowFlags_NoNav               |
+        ImGuiWindowFlags_NoFocusOnAppearing);
     ImGui::PopStyleColor();
     ImGui::SetCursorPosY((BAR_H - ImGui::GetTextLineHeight()) * 0.5f);
     ImGui::TextColored(Theme::COL_TEXT_DIM_V4, " %ls", m_statusMsg.c_str());
@@ -635,25 +608,19 @@ LRESULT CALLBACK MainWindow::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
         if (self && self->m_pDevice && wParam != SIZE_MINIMIZED) {
             UINT newW = LOWORD(lParam);
             UINT newH = HIWORD(lParam);
-            // Always record the new size.
             self->m_pendingW = newW;
             self->m_pendingH = newH;
             if (wParam == SIZE_MAXIMIZED || wParam == SIZE_RESTORED) {
-                // Maximize and restore do NOT fire WM_EXITSIZEMOVE,
-                // so we must reset D3D9 immediately here.
                 self->m_pendingResize = false;
                 self->m_d3dpp.BackBufferWidth  = newW;
                 self->m_d3dpp.BackBufferHeight = newH;
                 self->ResetD3D();
             } else {
-                // SIZE_SIZED (drag resize): defer to WM_EXITSIZEMOVE
-                // to avoid resetting D3D9 on every pixel of the drag.
                 self->m_pendingResize = true;
             }
         }
         return 0;
     case WM_EXITSIZEMOVE:
-        // User finished dragging the resize handle — apply deferred D3D9 reset.
         if (self && self->m_pDevice && self->m_pendingResize) {
             self->m_d3dpp.BackBufferWidth  = self->m_pendingW;
             self->m_d3dpp.BackBufferHeight = self->m_pendingH;
@@ -680,7 +647,6 @@ void MainWindow::Run() {
             continue;
         }
 
-        // Process pending thumbnail downloads/uploads every frame
         m_thumbCache.Tick();
 
         ImGui_ImplDX9_NewFrame();
