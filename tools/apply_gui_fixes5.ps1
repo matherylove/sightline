@@ -1,110 +1,46 @@
 # GUI-FIXES-5 patch script for ViewVideoDetail.h
 # Run from repo root: .\tools\apply_gui_fixes5.ps1
+# Uses only .Replace() - no -replace operator to avoid argument count errors.
 
 $file = "src\ui\views\ViewVideoDetail.h"
-$content = Get-Content $file -Raw -Encoding UTF8
+if (-not (Test-Path $file)) {
+    Write-Error "File not found: $file  (run from repo root)"
+    exit 1
+}
+
+$content = [System.IO.File]::ReadAllText((Resolve-Path $file), [System.Text.Encoding]::UTF8)
+$nl = "`r`n"
 
 # -----------------------------------------------------------------------
 # FIX 1: Move prevVol from static local to VideoDetailState struct
-# Add `int prevVol = 80;` field to struct before the closing brace
 # -----------------------------------------------------------------------
-$content = $content -replace `
-    '(// Related videos local UI state\r?\n    std::string relatedLoadedForVideoId;\r?\n\};)',
-    "`$1".Replace(
-        '// Related videos local UI state' + [char]10 + '    std::string relatedLoadedForVideoId;' + [char]10 + '};',
-        '// Related videos local UI state' + [char]10 +
-        '    std::string relatedLoadedForVideoId;' + [char]10 +
-        [char]10 +
-        '    // Volume mute/restore' + [char]10 +
-        '    int prevVol = 80;' + [char]10 +
-        '};'
-    )
-
-# Simpler regex approach
-$content = $content -replace `
-    '(    std::string relatedLoadedForVideoId;?
-\};)',
-    "    std::string relatedLoadedForVideoId;`r`n`r`n    // Volume mute/restore`r`n    int prevVol = 80;`r`n};"
+$old1 = "    std::string relatedLoadedForVideoId;$nl};"
+$new1 = "    std::string relatedLoadedForVideoId;$nl$nl    // Volume mute/restore (GUI-FIXES-5: was static local)$nl    int prevVol = 80;$nl};"
+$content = $content.Replace($old1, $new1)
 
 # -----------------------------------------------------------------------
-# FIX 2: Replace `static int prevVol = 80;` with `int& prevVol = vds.prevVol;`
+# FIX 2: Replace static int prevVol = 80 with reference to struct field
 # -----------------------------------------------------------------------
-$content = $content -replace `
-    'static int prevVol = 80;',
-    'int& prevVol = vds.prevVol; // moved to struct (GUI-FIXES-5)'
+$old2 = "        static int prevVol = 80;"
+$new2 = "        int& prevVol = vds.prevVol; // GUI-FIXES-5: moved to struct"
+$content = $content.Replace($old2, $new2)
 
 # -----------------------------------------------------------------------
-# FIX 3: Add Share + OpenInBrowser buttons to the action row (4 -> 6 buttons)
-# Replace the 4-button action row layout with 6 equal-width buttons
+# FIX 3: Action row - change from 4 to 6 buttons (Share + Browser added)
 # -----------------------------------------------------------------------
-$oldActionRow = @'
-        float actRowY = ctrRowY + CTR_H;
-        float actBtnW = (LW - PAD * 2.f) / 4.f;
-        ImGui::SetCursorPos({PAD, actRowY + (ACT_H - BH) * 0.5f});
-        ImGui::PushStyleColor(ImGuiCol_Button,        Theme::COL_SURFACE2);
-        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, Theme::COL_ACCENT_SOFT);
-        ImGui::PushStyleColor(ImGuiCol_ButtonActive,  Theme::COL_ACCENT_V4);
-        ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 4.f);
-        if (ImGui::Button(ICON_FA_DOWNLOAD "  Download", {actBtnW, BH}))
-            vds.dlDialog.open = true;
+$old3 = "        float actBtnW = (LW - PAD * 2.f) / 4.f;"
+$new3 = "        float actBtnW = (LW - PAD * 2.f) / 6.f; // GUI-FIXES-5: 6 buttons"
+$content = $content.Replace($old3, $new3)
 
-        ImGui::SameLine(0, 0);
-        bool isFav = PersistentData::IsInPlaylist("Favorites", vds.videoId);
-        const char* favLabel = isFav
-            ? ICON_FA_HEART "  Saved"
-            : ICON_FA_HEART "  Favorite";
-        if (ImGui::Button(favLabel, {actBtnW, BH})) {
-            if (isFav) PersistentData::RemoveFromPlaylist("Favorites", vds.videoId);
-            else       PersistentData::AddToPlaylist("Favorites", vds.videoId, vds.title);
-        }
-
-        ImGui::SameLine(0, 0);
-        if (ImGui::Button(ICON_FA_WINDOW_RESTORE "  Window", {actBtnW, BH})) {
-            if (!vds.popup.open&&!vds.videoId.empty()&&!vds.streamUrl.empty()) {
-                double startPos=vds.player.GetPosition();
-                vds.popup.startPos=startPos;
-                vds.popup.open=true;
-                vds.popup.seekPending=false; vds.popup.seekDone=false;
-            }
-        }
-
-        ImGui::SameLine(0, 0);
-        if (ImGui::Button(vds.fullscreen ? ICON_FA_COMPRESS "  Exit FS" : ICON_FA_EXPAND "  Fullscreen", {actBtnW, BH}))
-            vds.fullscreen = !vds.fullscreen;
-
-        ImGui::PopStyleVar();
-        ImGui::PopStyleColor(3);
-'@
-
-$newActionRow = @'
-        float actRowY = ctrRowY + CTR_H;
-        // GUI-FIXES-5: 6 equal-width buttons (added Share + Open in Browser)
-        float actBtnW = (LW - PAD * 2.f) / 6.f;
-        ImGui::SetCursorPos({PAD, actRowY + (ACT_H - BH) * 0.5f});
-        ImGui::PushStyleColor(ImGuiCol_Button,        Theme::COL_SURFACE2);
-        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, Theme::COL_ACCENT_SOFT);
-        ImGui::PushStyleColor(ImGuiCol_ButtonActive,  Theme::COL_ACCENT_V4);
-        ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 4.f);
-        if (ImGui::Button(ICON_FA_DOWNLOAD "  Download", {actBtnW, BH}))
-            vds.dlDialog.open = true;
-
-        ImGui::SameLine(0, 0);
-        bool isFav = PersistentData::IsInPlaylist("Favorites", vds.videoId);
-        const char* favLabel = isFav
-            ? ICON_FA_HEART "  Saved"
-            : ICON_FA_HEART "  Favorite";
-        if (ImGui::Button(favLabel, {actBtnW, BH})) {
-            if (isFav) PersistentData::RemoveFromPlaylist("Favorites", vds.videoId);
-            else       PersistentData::AddToPlaylist("Favorites", vds.videoId, vds.title);
-        }
-
-        // GUI-FIXES-5: Share button — copies YouTube URL to clipboard
+# Insert Share + Browser buttons before the Window button
+$old3b = "        ImGui::SameLine(0, 0);" + $nl + "        if (ImGui::Button(ICON_FA_WINDOW_RESTORE ""  Window"", {actBtnW, BH})) {"
+$new3b = @"
+        // GUI-FIXES-5: Share button - copies YouTube URL to clipboard
         ImGui::SameLine(0, 0);
         if (ImGui::Button(ICON_FA_SHARE_NODES "  Share", {actBtnW, BH})) {
             if (!vds.videoId.empty()) {
                 std::string shareUrl = "https://youtu.be/" + vds.videoId;
                 ImGui::SetClipboardText(shareUrl.c_str());
-                // Brief tooltip to confirm
             }
         }
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("Copy YouTube link to clipboard");
@@ -113,56 +49,39 @@ $newActionRow = @'
         ImGui::SameLine(0, 0);
         if (ImGui::Button(ICON_FA_ARROW_UP_RIGHT_FROM_SQUARE "  Browser", {actBtnW, BH})) {
             if (!vds.videoId.empty()) {
-                std::wstring url = L"https://www.youtube.com/watch?v=" +
+                std::wstring wurl = L"https://www.youtube.com/watch?v=" +
                     std::wstring(vds.videoId.begin(), vds.videoId.end());
-                ShellExecuteW(NULL, L"open", url.c_str(), NULL, NULL, SW_SHOWNORMAL);
+                ShellExecuteW(NULL, L"open", wurl.c_str(), NULL, NULL, SW_SHOWNORMAL);
             }
         }
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("Open in default browser");
 
         ImGui::SameLine(0, 0);
         if (ImGui::Button(ICON_FA_WINDOW_RESTORE "  Window", {actBtnW, BH})) {
-            if (!vds.popup.open&&!vds.videoId.empty()&&!vds.streamUrl.empty()) {
-                double startPos=vds.player.GetPosition();
-                vds.popup.startPos=startPos;
-                vds.popup.open=true;
-                vds.popup.seekPending=false; vds.popup.seekDone=false;
-            }
-        }
-
-        ImGui::SameLine(0, 0);
-        if (ImGui::Button(vds.fullscreen ? ICON_FA_COMPRESS "  Exit FS" : ICON_FA_EXPAND "  Fullscreen", {actBtnW, BH}))
-            vds.fullscreen = !vds.fullscreen;
-
-        ImGui::PopStyleVar();
-        ImGui::PopStyleColor(3);
-'@
-
-$content = $content.Replace($oldActionRow, $newActionRow)
+"@
+$content = $content.Replace($old3b, $new3b)
 
 # -----------------------------------------------------------------------
-# FIX 4: Add keyboard shortcuts handler after VD_DrainSeek(vds)
+# FIX 4: Keyboard shortcuts - insert after VD_DrainSeek(vds);
 # -----------------------------------------------------------------------
-$oldDrainSeek = 'VD_DrainSeek(vds);'
-$newDrainSeek = @'
-VD_DrainSeek(vds);
+$old4 = "    VD_DrainSeek(vds);"
+$new4 = @"
+    VD_DrainSeek(vds);
 
-    // GUI-FIXES-5: Keyboard shortcuts (only when this view is active and
-    //              no ImGui widget is capturing keyboard input)
+    // GUI-FIXES-5: Keyboard shortcuts (Space/arrows/F/M/UpDown)
     if (isActivePage && !ImGui::GetIO().WantCaptureKeyboard) {
-        ImGuiIO& kio = ImGui::GetIO();
         // Space -> play/pause
         if (ImGui::IsKeyPressed(ImGuiKey_Space, false) && vds.playStarted) {
             PlayerState kps = vds.player.GetState();
             if (kps == PlayerState::Playing) vds.player.Pause();
             else vds.player.Play();
         }
-        // Left arrow -> seek -10s
+        // Left -> seek -10s
         if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow, false) && vds.playStarted) {
             double np = vds.player.GetPosition() - 10.0;
             vds.player.SeekTo(np < 0 ? 0 : np);
         }
-        // Right arrow -> seek +10s
+        // Right -> seek +10s
         if (ImGui::IsKeyPressed(ImGuiKey_RightArrow, false) && vds.playStarted) {
             double dur2 = vds.player.GetDuration();
             double np   = vds.player.GetPosition() + 10.0;
@@ -177,31 +96,31 @@ VD_DrainSeek(vds);
             else                { vds.volume = vds.prevVol; }
             vds.player.SetVolume(vds.volume);
         }
-        // Up/Down arrows -> volume +/-5
+        // Up arrow -> volume +5
         if (ImGui::IsKeyPressed(ImGuiKey_UpArrow, false)) {
             vds.volume = std::min(100, vds.volume + 5);
             vds.player.SetVolume(vds.volume);
         }
+        // Down arrow -> volume -5
         if (ImGui::IsKeyPressed(ImGuiKey_DownArrow, false)) {
             vds.volume = std::max(0, vds.volume - 5);
             vds.player.SetVolume(vds.volume);
         }
     }
-'@
-$content = $content.Replace($oldDrainSeek, $newDrainSeek)
+"@
+$content = $content.Replace($old4, $new4)
 
 # -----------------------------------------------------------------------
 # FIX 5: Add ICON_FA_THUMBS_UP before likeCount in comments
 # -----------------------------------------------------------------------
-$content = $content -replace `
-    'ImGui\.TextColored\(\{0\.9f, 0\.75f, 0\.2f, 0\.85f\}, "%s", c\.likeCount\.c_str\(\)\);',
-    'ImGui.TextColored({0.9f, 0.75f, 0.2f, 0.85f}, ICON_FA_THUMBS_UP " %s", c.likeCount.c_str());'
+$old5 = 'ImGui::TextColored({0.9f, 0.75f, 0.2f, 0.85f}, "%s", c.likeCount.c_str());'
+$new5 = 'ImGui::TextColored({0.9f, 0.75f, 0.2f, 0.85f}, ICON_FA_THUMBS_UP " %s", c.likeCount.c_str());'
+$content = $content.Replace($old5, $new5)
 
 # -----------------------------------------------------------------------
-# FIX 6: Related panel - limit rendered items to 50 max + skeleton shimmer
-# Replace the placeholder play triangle with a shimmer-style placeholder
+# FIX 6a: Skeleton shimmer - replace static triangle placeholder
 # -----------------------------------------------------------------------
-$oldPlaceholder = @'
+$old6 = @"
             } else {
                 float cx2 = (thTL.x + thBR.x) * 0.5f;
                 float cy2 = (thTL.y + thBR.y) * 0.5f;
@@ -212,79 +131,75 @@ $oldPlaceholder = @'
                     {cx2 + r,        cy2},
                     IM_COL32(180,180,180,120));
             }
-'@
-
-$newPlaceholder = @'
+"@
+$new6 = @"
             } else {
-                // GUI-FIXES-5: shimmer-style skeleton placeholder
+                // GUI-FIXES-5: animated shimmer skeleton
                 float shimT = (float)(fmod(ImGui::GetTime() * 1.2, 1.0));
-                ImU32 shimA = IM_COL32(70,70,75,255);
-                ImU32 shimB = IM_COL32(90,90,95,255);
                 float cx2   = thTL.x + (thBR.x - thTL.x) * shimT;
-                dl->AddRectFilled(thTL, thBR, shimA, 4.f);
-                float hw = (thBR.x - thTL.x) * 0.35f;
+                float hw    = (thBR.x - thTL.x) * 0.35f;
+                dl->AddRectFilled(thTL, thBR, IM_COL32(70,70,75,255), 4.f);
                 dl->AddRectFilledMultiColor(
                     {cx2 - hw, thTL.y}, {cx2 + hw, thBR.y},
-                    IM_COL32(90,90,95,0), shimB, shimB, IM_COL32(90,90,95,0));
+                    IM_COL32(90,90,95,0), IM_COL32(90,90,95,255),
+                    IM_COL32(90,90,95,255), IM_COL32(90,90,95,0));
             }
-'@
-$content = $content.Replace($oldPlaceholder, $newPlaceholder)
-
-# Cap related items at 50
-$content = $content -replace `
-    'for \(int i = 0; i < \(int\)state\.pendingRelated\.items\.size\(\); i\+\+\)',
-    'int relLimit = std::min((int)state.pendingRelated.items.size(), 50); // GUI-FIXES-5: cap at 50' + "`r`n" +
-    '    for (int i = 0; i < relLimit; i++)'
+"@
+$content = $content.Replace($old6, $new6)
 
 # -----------------------------------------------------------------------
-# FIX 7: Add basic popup player draw call before DrawDownloadDialog
+# FIX 6b: Cap related items at 50
 # -----------------------------------------------------------------------
-$oldDrawDL = '    DrawDownloadDialog(vds.dlDialog, mainHwnd);'
-$newDrawDL = @'
-    // GUI-FIXES-5: Popup player window
+$old6b = "    for (int i = 0; i < (int)state.pendingRelated.items.size(); i++) {"
+$new6b = "    int relLimit = std::min((int)state.pendingRelated.items.size(), 50); // GUI-FIXES-5$nl    for (int i = 0; i < relLimit; i++) {"
+$content = $content.Replace($old6b, $new6b)
+
+# -----------------------------------------------------------------------
+# FIX 7: Popup player draw - insert before DrawDownloadDialog
+# -----------------------------------------------------------------------
+$old7 = "    DrawDownloadDialog(vds.dlDialog, mainHwnd);"
+$new7 = @"
+    // GUI-FIXES-5: Popup player window draw
     if (vds.popup.open) {
         ImGui::SetNextWindowSize({640.f, 400.f}, ImGuiCond_FirstUseEver);
         ImGui::SetNextWindowPos(
             {x + w * 0.5f - 320.f, y + h * 0.5f - 200.f},
             ImGuiCond_FirstUseEver);
-        ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4{0.08f,0.08f,0.08f,1.f});
+        ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4{0.08f, 0.08f, 0.08f, 1.f});
         bool popupOpen = true;
-        if (ImGui::Begin(("Popup: " + vds.title).c_str(), &popupOpen,
+        if (ImGui::Begin(("Now Playing: " + vds.title).c_str(), &popupOpen,
             ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse))
         {
-            ImVec2 sz = ImGui::GetContentRegionAvail();
-            float popW = sz.x, popH = sz.y;
-            HWND popParent = (HWND)ImGui::GetCurrentWindow()->Viewport->PlatformHandle;
-            if (popParent && popW > 0 && popH > 0) {
-                ImVec2 wPos = ImGui::GetWindowPos();
+            ImVec2 sz   = ImGui::GetContentRegionAvail();
+            float popW  = sz.x;
+            float popH  = sz.y;
+            HWND popPar = (HWND)ImGui::GetCurrentWindow()->Viewport->PlatformHandle;
+            if (popPar && popW > 10 && popH > 10) {
                 ImVec2 cPos = ImGui::GetCursorScreenPos();
                 int ppX = (int)cPos.x, ppY = (int)cPos.y;
                 int ppW = (int)popW,   ppH = (int)popH;
-                VD_TickPanelAndOverlay(popParent, ppX, ppY, ppW, ppH,
+                static int ppCX=-1,ppCY=-1,ppCW=-1,ppCH=-1;
+                VD_TickPanelAndOverlay(popPar, ppX, ppY, ppW, ppH,
                     vds.popup.videoChild, vds.popup.overlayHwnd,
-                    vds.cachedPX, vds.cachedPY, vds.cachedPW, vds.cachedPH,
-                    nullptr);
-                // Init player on first open
+                    ppCX, ppCY, ppCW, ppCH, nullptr);
                 if (!vds.popup.player) {
                     vds.popup.player = new VLCPlayer();
-                    vds.popup.panelUD.player  = vds.popup.player;
-                    vds.popup.panelUD.isFS    = &vds.fullscreen;
-                    vds.popup.panelUD.lastMove= &vds.lastMouseMove;
                     vds.popup.player->Init(vds.popup.videoChild);
                     vds.popup.player->SetVolume(vds.volume);
                     std::string popUrl = vds.qualities.empty()
                         ? vds.streamUrl
                         : VD_BuildUrl(vds.qualities[vds.qualityIdx]);
                     vds.popup.player->Open(popUrl);
-                    if (vds.popup.startPos > 0.5)
+                    if (vds.popup.startPos > 0.5) {
                         vds.popup.seekPending = true;
-                }
-                if (vds.popup.seekPending && !vds.popup.seekDone) {
-                    if (vds.popup.player->GetState() == PlayerState::Playing) {
-                        vds.popup.player->SeekTo(vds.popup.startPos);
-                        vds.popup.seekPending = false;
-                        vds.popup.seekDone    = true;
+                        vds.popup.seekDone    = false;
                     }
+                }
+                if (vds.popup.seekPending && !vds.popup.seekDone &&
+                    vds.popup.player->GetState() == PlayerState::Playing) {
+                    vds.popup.player->SeekTo(vds.popup.startPos);
+                    vds.popup.seekPending = false;
+                    vds.popup.seekDone    = true;
                 }
                 ImGui::Dummy({popW, popH});
             }
@@ -295,16 +210,18 @@ $newDrawDL = @'
     }
 
     DrawDownloadDialog(vds.dlDialog, mainHwnd);
-'@
-$content = $content.Replace($oldDrawDL, $newDrawDL)
+"@
+$content = $content.Replace($old7, $new7)
 
 # -----------------------------------------------------------------------
-# Update header comment to reflect GUI-FIXES-5
+# FIX 8: Update header comment block
 # -----------------------------------------------------------------------
-$content = $content -replace `
-    '// GUI-FIXES-4:',
-    "// GUI-FIXES-5: keyboard shortcuts (Space/arrows/F/M), Share+Browser btns,`r`n//              popup player render, prevVol moved to struct, like icon,`r`n//              sidebar skeleton shimmer, related list capped at 50.`r`n// GUI-FIXES-4:"
+$old8 = "// GUI-FIXES-4:"
+$new8 = "// GUI-FIXES-5: keyboard shortcuts (Space/arrows/F/M), Share+Browser btns,$nl//              popup player render, prevVol moved to struct, like icon,$nl//              sidebar skeleton shimmer, related list capped at 50.$nl// GUI-FIXES-4:"
+$content = $content.Replace($old8, $new8)
 
-# Write file
+# -----------------------------------------------------------------------
+# Write result
+# -----------------------------------------------------------------------
 [System.IO.File]::WriteAllText((Resolve-Path $file).Path, $content, [System.Text.Encoding]::UTF8)
-Write-Host "GUI-FIXES-5 applied to $file"
+Write-Host "GUI-FIXES-5 applied successfully to $file" -ForegroundColor Green
