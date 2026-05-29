@@ -315,6 +315,13 @@ static DD_DialogWindow g_DlgWin;
 static void DD_Worker(DownloadDialogState* ds, HWND mainHwnd);
 
 // ---------------------------------------------------------------------------
+// Forward-declare LoadUIFont so DD_OpenDialogWindow can call it on the
+// dialog's own ImGuiContext.  The definition lives in MainWindow.cpp;
+// we only need the prototype here.
+// ---------------------------------------------------------------------------
+static void LoadUIFont();
+
+// ---------------------------------------------------------------------------
 // DD_OpenDialogWindow
 // ---------------------------------------------------------------------------
 static bool DD_OpenDialogWindow(DownloadDialogState* ds, HWND mainHwnd) {
@@ -395,6 +402,11 @@ static bool DD_OpenDialogWindow(DownloadDialogState* ds, HWND mainHwnd) {
     ImGuiIO& io = ImGui::GetIO();
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
     io.IniFilename  = NULL;
+
+    // Load the same UI font (Verdana/Tahoma/Arial + FA6 icons) that the main
+    // window uses.  Each ImGuiContext owns its own font atlas, so we must
+    // call LoadUIFont() here while the dialog context is current.
+    LoadUIFont();
 
     ImGui::StyleColorsDark();
     ImGuiStyle& style = ImGui::GetStyle();
@@ -696,7 +708,9 @@ static void DD_RenderDialogContent(DownloadDialogState& ds, HWND ownerHwnd) {
     ImGui::SameLine(0, 6.f);
     ImGui::PushStyleColor(ImGuiCol_Button,       {.22f,.22f,.22f,1.f});
     ImGui::PushStyleColor(ImGuiCol_ButtonHovered,Theme::COL_ACCENT_V4);
-    if (ImGui::Button("Browse", {64.f, 22.f})) {
+    // Height 0.f: inherits FramePadding from the active theme so the button
+    // stays flush with the InputText widget beside it.
+    if (ImGui::Button("Browse", {64.f, 0.f})) {
         std::string picked = DD_BrowseFolder(g_DlgWin.hwnd, ds.outFolder);
         if (!picked.empty()) strncpy_s(ds.outFolder, picked.c_str(), sizeof(ds.outFolder)-1);
     }
@@ -1230,22 +1244,20 @@ inline void DrawDownloadDialog(DownloadDialogState& ds, HWND mainHwnd) {
         else
             g_DlgWin.ds = &ds;
 
-        // Kick off quality fetch if not done yet
+        // Kick off quality fetch if not done yet.
+        // Use a plain bool flag instead of goto to avoid crossing variable
+        // initialization (C++ UB / MSVC warning C4533).
+        bool needFetch = false;
         {
             std::lock_guard<std::mutex> lk(ds.qualityMux);
-            if (!ds.qualitiesFetching && !ds.qualitiesFetched && !ds.videoId.empty()) {
-                // Release lock before calling StartQualityFetch (it acquires it internally)
-                // Use a flag to call after the lock scope
-                goto do_quality_fetch;
-            }
-            goto skip_quality_fetch;
+            if (!ds.qualitiesFetching && !ds.qualitiesFetched && !ds.videoId.empty())
+                needFetch = true;
         }
-        do_quality_fetch: {
+        if (needFetch) {
             std::wstring ytdlpPath = DD_ExeDir() + L"\\" + DD_GetYtDlpExe();
             if (GetFileAttributesW(ytdlpPath.c_str()) != INVALID_FILE_ATTRIBUTES)
                 ds.StartQualityFetch(ytdlpPath);
         }
-        skip_quality_fetch:
 
         DD_TickDialogWindow();
     } else {
