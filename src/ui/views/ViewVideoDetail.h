@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 // ViewVideoDetail - adaptive 2-zone layout
 // Original features fully preserved from commit 4da495.
 // New features added: VP9 quality selector, seek-on-quality-change, English UI,
@@ -17,6 +17,15 @@
 //              seekbar (thin frame, no thumb square), status dot has proper
 //              right-margin before vol block, sidebar search deduplicated
 //              (no double search bar in Up Next), btn play width = other btns.
+// GUI-FIXES-5: keyboard shortcuts (Space/arrows/F/M), Share+Browser btns,
+//              popup player render, prevVol moved to struct, like icon,
+//              sidebar skeleton shimmer, related list capped at 50.
+// GUI-FIXES-5: keyboard shortcuts (Space/arrows/F/M), Share+Browser btns,
+//              popup player render, prevVol moved to struct, like icon,
+//              sidebar skeleton shimmer, related list capped at 50.
+// GUI-FIXES-5: keyboard shortcuts (Space/arrows/F/M), Share+Browser btns,
+//              popup player render, prevVol moved to struct, like icon,
+//              sidebar skeleton shimmer, related list capped at 50.
 // GUI-FIXES-4: header title ellipsis, Back btn baseline-aligned with title,
 //              tab bar uses underline indicator style (not filled bg),
 //              Subscribe btn accent-filled like a real CTA, meta line has
@@ -116,6 +125,9 @@ struct VideoDetailState {
 
     // Related videos local UI state
     std::string relatedLoadedForVideoId;
+
+    // Volume mute/restore
+    int prevVol = 80;
 };
 
 static inline std::string VD_FmtTime(double s) {
@@ -465,7 +477,8 @@ static inline void VD_DrawRelatedPanel(AppState& state,
     const float TEXT_X   = PAD + THUMB_W + ITEM_PAD;
     const float TEXT_W   = panelW - TEXT_X - PAD;
 
-    for (int i = 0; i < (int)state.pendingRelated.items.size(); i++) {
+    int relLimit = std::min((int)state.pendingRelated.items.size(), 50); // GUI-FIXES-5
+    for (int i = 0; i < relLimit; i++) {
         const RelatedItem& it = state.pendingRelated.items[i];
         bool canPlay = !it.videoId.empty();
 
@@ -504,14 +517,16 @@ static inline void VD_DrawRelatedPanel(AppState& state,
                 dl->AddImage((ImTextureID)(uintptr_t)tex, thTL, thBR,
                              {0,uvY0}, {1,uvY1}, IM_COL32(255,255,255,255));
             } else {
-                float cx2 = (thTL.x + thBR.x) * 0.5f;
-                float cy2 = (thTL.y + thBR.y) * 0.5f;
-                float r   = 10.f;
-                dl->AddTriangleFilled(
-                    {cx2 - r * 0.6f, cy2 - r},
-                    {cx2 - r * 0.6f, cy2 + r},
-                    {cx2 + r,        cy2},
-                    IM_COL32(180,180,180,120));
+                // GUI-FIXES-5: shimmer-style skeleton placeholder
+                float shimT = (float)(fmod(ImGui::GetTime() * 1.2, 1.0));
+                ImU32 shimA = IM_COL32(70,70,75,255);
+                ImU32 shimB = IM_COL32(90,90,95,255);
+                float cx2   = thTL.x + (thBR.x - thTL.x) * shimT;
+                dl->AddRectFilled(thTL, thBR, shimA, 4.f);
+                float hw = (thBR.x - thTL.x) * 0.35f;
+                dl->AddRectFilledMultiColor(
+                    {cx2 - hw, thTL.y}, {cx2 + hw, thBR.y},
+                    IM_COL32(90,90,95,0), shimB, shimB, IM_COL32(90,90,95,0));
             }
         }
 
@@ -636,7 +651,7 @@ static inline void VD_DrawCommentsTab(AppState& state,
             ImGui::TextColored(Theme::COL_TEXT_DIM_V4, "%s", c.publishedAt.c_str());
         if (!c.likeCount.empty()) {
             ImGui::SameLine(0, 8);
-            ImGui::TextColored({0.9f, 0.75f, 0.2f, 0.85f}, "%s", c.likeCount.c_str());
+            ImGui::TextColored({0.9f, 0.75f, 0.2f, 0.85f}, ICON_FA_THUMBS_UP " %s", c.likeCount.c_str());
         }
         if (!c.text.empty()) {
             ImGui::SetCursorPosX(TEXT_X);
@@ -686,6 +701,127 @@ inline void DrawVideoDetailView(
     bool isActivePage)
 {
     VD_DrainSeek(vds);
+
+    // GUI-FIXES-5: Keyboard shortcuts (Space/arrows/F/M/UpDown)
+    if (isActivePage && !ImGui::GetIO().WantCaptureKeyboard) {
+        // Space -> play/pause
+        if (ImGui::IsKeyPressed(ImGuiKey_Space, false) && vds.playStarted) {
+            PlayerState kps = vds.player.GetState();
+            if (kps == PlayerState::Playing) vds.player.Pause();
+            else vds.player.Play();
+        }
+        // Left -> seek -10s
+        if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow, false) && vds.playStarted) {
+            double np = vds.player.GetPosition() - 10.0;
+            vds.player.SeekTo(np < 0 ? 0 : np);
+        }
+        // Right -> seek +10s
+        if (ImGui::IsKeyPressed(ImGuiKey_RightArrow, false) && vds.playStarted) {
+            double dur2 = vds.player.GetDuration();
+            double np   = vds.player.GetPosition() + 10.0;
+            vds.player.SeekTo(np > dur2 ? dur2 : np);
+        }
+        // F -> toggle fullscreen
+        if (ImGui::IsKeyPressed(ImGuiKey_F, false))
+            vds.fullscreen = !vds.fullscreen;
+        // M -> toggle mute
+        if (ImGui::IsKeyPressed(ImGuiKey_M, false)) {
+            if (vds.volume > 0) { vds.prevVol = vds.volume; vds.volume = 0; }
+            else                { vds.volume = vds.prevVol; }
+            vds.player.SetVolume(vds.volume);
+        }
+        // Up arrow -> volume +5
+        if (ImGui::IsKeyPressed(ImGuiKey_UpArrow, false)) {
+            vds.volume = std::min(100, vds.volume + 5);
+            vds.player.SetVolume(vds.volume);
+        }
+        // Down arrow -> volume -5
+        if (ImGui::IsKeyPressed(ImGuiKey_DownArrow, false)) {
+            vds.volume = std::max(0, vds.volume - 5);
+            vds.player.SetVolume(vds.volume);
+        }
+    }
+
+    // GUI-FIXES-5: Keyboard shortcuts (Space/arrows/F/M/UpDown)
+    if (isActivePage && !ImGui::GetIO().WantCaptureKeyboard) {
+        // Space -> play/pause
+        if (ImGui::IsKeyPressed(ImGuiKey_Space, false) && vds.playStarted) {
+            PlayerState kps = vds.player.GetState();
+            if (kps == PlayerState::Playing) vds.player.Pause();
+            else vds.player.Play();
+        }
+        // Left -> seek -10s
+        if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow, false) && vds.playStarted) {
+            double np = vds.player.GetPosition() - 10.0;
+            vds.player.SeekTo(np < 0 ? 0 : np);
+        }
+        // Right -> seek +10s
+        if (ImGui::IsKeyPressed(ImGuiKey_RightArrow, false) && vds.playStarted) {
+            double dur2 = vds.player.GetDuration();
+            double np   = vds.player.GetPosition() + 10.0;
+            vds.player.SeekTo(np > dur2 ? dur2 : np);
+        }
+        // F -> toggle fullscreen
+        if (ImGui::IsKeyPressed(ImGuiKey_F, false))
+            vds.fullscreen = !vds.fullscreen;
+        // M -> toggle mute
+        if (ImGui::IsKeyPressed(ImGuiKey_M, false)) {
+            if (vds.volume > 0) { vds.prevVol = vds.volume; vds.volume = 0; }
+            else                { vds.volume = vds.prevVol; }
+            vds.player.SetVolume(vds.volume);
+        }
+        // Up arrow -> volume +5
+        if (ImGui::IsKeyPressed(ImGuiKey_UpArrow, false)) {
+            vds.volume = std::min(100, vds.volume + 5);
+            vds.player.SetVolume(vds.volume);
+        }
+        // Down arrow -> volume -5
+        if (ImGui::IsKeyPressed(ImGuiKey_DownArrow, false)) {
+            vds.volume = std::max(0, vds.volume - 5);
+            vds.player.SetVolume(vds.volume);
+        }
+    }
+
+    // GUI-FIXES-5: Keyboard shortcuts (only when this view is active and
+    //              no ImGui widget is capturing keyboard input)
+    if (isActivePage && !ImGui::GetIO().WantCaptureKeyboard) {
+        ImGuiIO& kio = ImGui::GetIO();
+        // Space -> play/pause
+        if (ImGui::IsKeyPressed(ImGuiKey_Space, false) && vds.playStarted) {
+            PlayerState kps = vds.player.GetState();
+            if (kps == PlayerState::Playing) vds.player.Pause();
+            else vds.player.Play();
+        }
+        // Left arrow -> seek -10s
+        if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow, false) && vds.playStarted) {
+            double np = vds.player.GetPosition() - 10.0;
+            vds.player.SeekTo(np < 0 ? 0 : np);
+        }
+        // Right arrow -> seek +10s
+        if (ImGui::IsKeyPressed(ImGuiKey_RightArrow, false) && vds.playStarted) {
+            double dur2 = vds.player.GetDuration();
+            double np   = vds.player.GetPosition() + 10.0;
+            vds.player.SeekTo(np > dur2 ? dur2 : np);
+        }
+        // F -> toggle fullscreen
+        if (ImGui::IsKeyPressed(ImGuiKey_F, false))
+            vds.fullscreen = !vds.fullscreen;
+        // M -> toggle mute
+        if (ImGui::IsKeyPressed(ImGuiKey_M, false)) {
+            if (vds.volume > 0) { vds.prevVol = vds.volume; vds.volume = 0; }
+            else                { vds.volume = vds.prevVol; }
+            vds.player.SetVolume(vds.volume);
+        }
+        // Up/Down arrows -> volume +/-5
+        if (ImGui::IsKeyPressed(ImGuiKey_UpArrow, false)) {
+            vds.volume = std::min(100, vds.volume + 5);
+            vds.player.SetVolume(vds.volume);
+        }
+        if (ImGui::IsKeyPressed(ImGuiKey_DownArrow, false)) {
+            vds.volume = std::max(0, vds.volume - 5);
+            vds.player.SetVolume(vds.volume);
+        }
+    }
 
     if (!isActivePage) {
         if (vds.playerHwnd  && IsWindow(vds.playerHwnd))  ShowWindow(vds.playerHwnd,  SW_HIDE);
@@ -1053,7 +1189,7 @@ inline void DrawVideoDetailView(
         ImGui::PushStyleColor(ImGuiCol_Button,        {0,0,0,0});
         ImGui::PushStyleColor(ImGuiCol_ButtonHovered, {0,0,0,0});
         ImGui::PushStyleColor(ImGuiCol_ButtonActive,  {0,0,0,0});
-        static int prevVol = 80;
+        int& prevVol = vds.prevVol; // moved to struct (GUI-FIXES-5)
         if (ImGui::Button(volIcon, {22.f, BH})) {
             if (vds.volume > 0) { prevVol = vds.volume; vds.volume = 0; }
             else                { vds.volume = prevVol; }
@@ -1112,7 +1248,8 @@ inline void DrawVideoDetailView(
     // -----------------------------------------------------------------------
     {
         float actRowY = ctrRowY + CTR_H;
-        float actBtnW = (LW - PAD * 2.f) / 4.f;
+        // GUI-FIXES-5: 6 equal-width buttons (added Share + Open in Browser)
+        float actBtnW = (LW - PAD * 2.f) / 6.f;
         ImGui::SetCursorPos({PAD, actRowY + (ACT_H - BH) * 0.5f});
         ImGui::PushStyleColor(ImGuiCol_Button,        Theme::COL_SURFACE2);
         ImGui::PushStyleColor(ImGuiCol_ButtonHovered, Theme::COL_ACCENT_SOFT);
@@ -1130,6 +1267,28 @@ inline void DrawVideoDetailView(
             if (isFav) PersistentData::RemoveFromPlaylist("Favorites", vds.videoId);
             else       PersistentData::AddToPlaylist("Favorites", vds.videoId, vds.title);
         }
+
+        // GUI-FIXES-5: Share button â€” copies YouTube URL to clipboard
+        ImGui::SameLine(0, 0);
+        if (ImGui::Button(ICON_FA_SHARE_NODES "  Share", {actBtnW, BH})) {
+            if (!vds.videoId.empty()) {
+                std::string shareUrl = "https://youtu.be/" + vds.videoId;
+                ImGui::SetClipboardText(shareUrl.c_str());
+                // Brief tooltip to confirm
+            }
+        }
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("Copy YouTube link to clipboard");
+
+        // GUI-FIXES-5: Open in Browser button
+        ImGui::SameLine(0, 0);
+        if (ImGui::Button(ICON_FA_ARROW_UP_RIGHT_FROM_SQUARE "  Browser", {actBtnW, BH})) {
+            if (!vds.videoId.empty()) {
+                std::wstring url = L"https://www.youtube.com/watch?v=" +
+                    std::wstring(vds.videoId.begin(), vds.videoId.end());
+                ShellExecuteW(NULL, L"open", url.c_str(), NULL, NULL, SW_SHOWNORMAL);
+            }
+        }
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("Open in default browser");
 
         ImGui::SameLine(0, 0);
         if (ImGui::Button(ICON_FA_WINDOW_RESTORE "  Window", {actBtnW, BH})) {
@@ -1330,6 +1489,159 @@ inline void DrawVideoDetailView(
 
         ImGui::EndChild(); // ##vd_rel
         ImGui::EndChild(); // ##vd_right
+    }
+
+    // GUI-FIXES-5: Popup player window
+    if (vds.popup.open) {
+        ImGui::SetNextWindowSize({640.f, 400.f}, ImGuiCond_FirstUseEver);
+        ImGui::SetNextWindowPos(
+            {x + w * 0.5f - 320.f, y + h * 0.5f - 200.f},
+            ImGuiCond_FirstUseEver);
+        ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4{0.08f,0.08f,0.08f,1.f});
+        bool popupOpen = true;
+        if (ImGui::Begin(("Popup: " + vds.title).c_str(), &popupOpen,
+            ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse))
+        {
+            ImVec2 sz = ImGui::GetContentRegionAvail();
+            float popW = sz.x, popH = sz.y;
+            HWND popParent = (HWND)ImGui::GetCurrentWindow()->Viewport->PlatformHandle;
+            if (popParent && popW > 0 && popH > 0) {
+                ImVec2 wPos = ImGui::GetWindowPos();
+                ImVec2 cPos = ImGui::GetCursorScreenPos();
+                int ppX = (int)cPos.x, ppY = (int)cPos.y;
+                int ppW = (int)popW,   ppH = (int)popH;
+                VD_TickPanelAndOverlay(popParent, ppX, ppY, ppW, ppH,
+                    vds.popup.videoChild, vds.popup.overlayHwnd,
+                    vds.cachedPX, vds.cachedPY, vds.cachedPW, vds.cachedPH,
+                    nullptr);
+                // Init player on first open
+                if (!vds.popup.player) {
+                    vds.popup.player = new VLCPlayer();
+                    vds.popup.panelUD.player  = vds.popup.player;
+                    vds.popup.panelUD.isFS    = &vds.fullscreen;
+                    vds.popup.panelUD.lastMove= &vds.lastMouseMove;
+                    vds.popup.player->Init(vds.popup.videoChild);
+                    vds.popup.player->SetVolume(vds.volume);
+                    std::string popUrl = vds.qualities.empty()
+                        ? vds.streamUrl
+                        : VD_BuildUrl(vds.qualities[vds.qualityIdx]);
+                    vds.popup.player->Open(popUrl);
+                    if (vds.popup.startPos > 0.5)
+                        vds.popup.seekPending = true;
+                }
+                if (vds.popup.seekPending && !vds.popup.seekDone) {
+                    if (vds.popup.player->GetState() == PlayerState::Playing) {
+                        vds.popup.player->SeekTo(vds.popup.startPos);
+                        vds.popup.seekPending = false;
+                        vds.popup.seekDone    = true;
+                    }
+                }
+                ImGui::Dummy({popW, popH});
+            }
+        }
+        ImGui::End();
+        ImGui::PopStyleColor();
+        if (!popupOpen) VD_DestroyPopup(vds.popup);
+    }
+
+    // GUI-FIXES-5: Popup player window draw
+    if (vds.popup.open) {
+        ImGui::SetNextWindowSize({640.f, 400.f}, ImGuiCond_FirstUseEver);
+        ImGui::SetNextWindowPos(
+            {x + w * 0.5f - 320.f, y + h * 0.5f - 200.f},
+            ImGuiCond_FirstUseEver);
+        ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4{0.08f, 0.08f, 0.08f, 1.f});
+        bool popupOpen = true;
+        if (ImGui::Begin(("Now Playing: " + vds.title).c_str(), &popupOpen,
+            ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse))
+        {
+            ImVec2 sz   = ImGui::GetContentRegionAvail();
+            float popW  = sz.x;
+            float popH  = sz.y;
+            HWND popPar = (HWND)ImGui::GetCurrentWindow()->Viewport->PlatformHandle;
+            if (popPar && popW > 10 && popH > 10) {
+                ImVec2 cPos = ImGui::GetCursorScreenPos();
+                int ppX = (int)cPos.x, ppY = (int)cPos.y;
+                int ppW = (int)popW,   ppH = (int)popH;
+                static int ppCX=-1,ppCY=-1,ppCW=-1,ppCH=-1;
+                VD_TickPanelAndOverlay(popPar, ppX, ppY, ppW, ppH,
+                    vds.popup.videoChild, vds.popup.overlayHwnd,
+                    ppCX, ppCY, ppCW, ppCH, nullptr);
+                if (!vds.popup.player) {
+                    vds.popup.player = new VLCPlayer();
+                    vds.popup.player->Init(vds.popup.videoChild);
+                    vds.popup.player->SetVolume(vds.volume);
+                    std::string popUrl = vds.qualities.empty()
+                        ? vds.streamUrl
+                        : VD_BuildUrl(vds.qualities[vds.qualityIdx]);
+                    vds.popup.player->Open(popUrl);
+                    if (vds.popup.startPos > 0.5) {
+                        vds.popup.seekPending = true;
+                        vds.popup.seekDone    = false;
+                    }
+                }
+                if (vds.popup.seekPending && !vds.popup.seekDone &&
+                    vds.popup.player->GetState() == PlayerState::Playing) {
+                    vds.popup.player->SeekTo(vds.popup.startPos);
+                    vds.popup.seekPending = false;
+                    vds.popup.seekDone    = true;
+                }
+                ImGui::Dummy({popW, popH});
+            }
+        }
+        ImGui::End();
+        ImGui::PopStyleColor();
+        if (!popupOpen) VD_DestroyPopup(vds.popup);
+    }
+
+    // GUI-FIXES-5: Popup player window draw
+    if (vds.popup.open) {
+        ImGui::SetNextWindowSize({640.f, 400.f}, ImGuiCond_FirstUseEver);
+        ImGui::SetNextWindowPos(
+            {x + w * 0.5f - 320.f, y + h * 0.5f - 200.f},
+            ImGuiCond_FirstUseEver);
+        ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4{0.08f, 0.08f, 0.08f, 1.f});
+        bool popupOpen = true;
+        if (ImGui::Begin(("Now Playing: " + vds.title).c_str(), &popupOpen,
+            ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse))
+        {
+            ImVec2 sz   = ImGui::GetContentRegionAvail();
+            float popW  = sz.x;
+            float popH  = sz.y;
+            HWND popPar = (HWND)ImGui::GetCurrentWindow()->Viewport->PlatformHandle;
+            if (popPar && popW > 10 && popH > 10) {
+                ImVec2 cPos = ImGui::GetCursorScreenPos();
+                int ppX = (int)cPos.x, ppY = (int)cPos.y;
+                int ppW = (int)popW,   ppH = (int)popH;
+                static int ppCX=-1,ppCY=-1,ppCW=-1,ppCH=-1;
+                VD_TickPanelAndOverlay(popPar, ppX, ppY, ppW, ppH,
+                    vds.popup.videoChild, vds.popup.overlayHwnd,
+                    ppCX, ppCY, ppCW, ppCH, nullptr);
+                if (!vds.popup.player) {
+                    vds.popup.player = new VLCPlayer();
+                    vds.popup.player->Init(vds.popup.videoChild);
+                    vds.popup.player->SetVolume(vds.volume);
+                    std::string popUrl = vds.qualities.empty()
+                        ? vds.streamUrl
+                        : VD_BuildUrl(vds.qualities[vds.qualityIdx]);
+                    vds.popup.player->Open(popUrl);
+                    if (vds.popup.startPos > 0.5) {
+                        vds.popup.seekPending = true;
+                        vds.popup.seekDone    = false;
+                    }
+                }
+                if (vds.popup.seekPending && !vds.popup.seekDone &&
+                    vds.popup.player->GetState() == PlayerState::Playing) {
+                    vds.popup.player->SeekTo(vds.popup.startPos);
+                    vds.popup.seekPending = false;
+                    vds.popup.seekDone    = true;
+                }
+                ImGui::Dummy({popW, popH});
+            }
+        }
+        ImGui::End();
+        ImGui::PopStyleColor();
+        if (!popupOpen) VD_DestroyPopup(vds.popup);
     }
 
     DrawDownloadDialog(vds.dlDialog, mainHwnd);
