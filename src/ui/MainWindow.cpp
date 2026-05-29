@@ -447,41 +447,30 @@ void MainWindow::DrawTopBar(float w) {
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("Settings");
     ImGui::PopStyleColor(2);
 
-    // Page title — GUI-FIX-1: centred relative to the full window width (w),
-    // not just the leftover space between the Home button and the search block.
-    // This ensures the title is always visually centred regardless of the
-    // asymmetric widths of the left (40px) and right (286px) elements.
-    {
-        const char* pageTitle = "Sightline Visualizer";
-        if (m_state.activePage == AppPage::Search)      pageTitle = "Search";
-        if (m_state.activePage == AppPage::Settings)    pageTitle = "Settings";
-        if (m_state.activePage == AppPage::Channel)     pageTitle = "Channel";
-        if (m_state.activePage == AppPage::VideoDetail) {
-            if (!m_state.pendingPlay.title.empty())
-                m_currentVideoTitle = m_state.pendingPlay.title;
-            pageTitle = m_currentVideoTitle.empty()
-                ? "Now Playing" : m_currentVideoTitle.c_str();
-        }
-        if (m_state.activePage == AppPage::About) pageTitle = "About";
-
-        // Maximum width the title may occupy: leave room for both side widgets
-        // plus a small safe-margin so the title never overlaps them.
-        const float SAFE_MARGIN = 8.0f;
-        const float leftGuard   = R_PAD + BTN_W + SAFE_MARGIN;
-        const float rightGuard  = BLOCK_W + SAFE_MARGIN;
-        const float maxTitleW   = w - leftGuard - rightGuard;
-
-        std::string truncTitle = Widgets::TruncateText(pageTitle, maxTitleW);
-        float titleW  = ImGui::CalcTextSize(truncTitle.c_str()).x;
-        // Centre on full window width, then clamp so it never overlaps the
-        // home button on the left.
-        float titleX  = (w - titleW) * 0.5f;
-        if (titleX < leftGuard) titleX = leftGuard;
-
-        float textH = ImGui::GetTextLineHeight();
-        ImGui::SetCursorPos(ImVec2(titleX, (TOP_H - textH) * 0.5f));
-        ImGui::TextColored(Theme::COL_ACCENT_V4, "%s", truncTitle.c_str());
+    // Page title (centered)
+    const char* pageTitle = "Sightline Visualizer";
+    if (m_state.activePage == AppPage::Search)      pageTitle = "Search";
+    if (m_state.activePage == AppPage::Settings)    pageTitle = "Settings";
+    if (m_state.activePage == AppPage::Channel)     pageTitle = "Channel";
+    if (m_state.activePage == AppPage::VideoDetail) {
+        if (!m_state.pendingPlay.title.empty())
+            m_currentVideoTitle = m_state.pendingPlay.title;
+        pageTitle = m_currentVideoTitle.empty()
+            ? "Now Playing" : m_currentVideoTitle.c_str();
     }
+    if (m_state.activePage == AppPage::About) pageTitle = "About";
+
+    float leftEdge  = R_PAD + BTN_W + GAP;
+    float rightEdge = w - BLOCK_W;
+    float midZoneW  = rightEdge - leftEdge;
+
+    std::string truncTitle = Widgets::TruncateText(pageTitle, midZoneW - GAP * 2.f);
+    float titleW = ImGui::CalcTextSize(truncTitle.c_str()).x;
+    float titleX = leftEdge + (midZoneW - titleW) * 0.5f;
+    if (titleX < leftEdge) titleX = leftEdge;
+    float textH  = ImGui::GetTextLineHeight();
+    ImGui::SetCursorPos(ImVec2(titleX, (TOP_H - textH) * 0.5f));
+    ImGui::TextColored(Theme::COL_ACCENT_V4, "%s", truncTitle.c_str());
 
     // Search field + button
     float blockX = w - BLOCK_W;
