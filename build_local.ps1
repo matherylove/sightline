@@ -76,6 +76,15 @@ if (-not (Test-Path "third_party\stb_image.h")) {
     Write-Host "  stb_image.h already present, skipping."
 }
 
+if (-not (Test-Path "third_party\IconsFontAwesome6.h")) {
+    Write-Host "  Downloading IconsFontAwesome6.h..."
+    Invoke-WebRequest `
+        -Uri "https://raw.githubusercontent.com/juliettef/IconFontCppHeaders/main/IconsFontAwesome6.h" `
+        -OutFile "third_party\IconsFontAwesome6.h"
+} else {
+    Write-Host "  IconsFontAwesome6.h already present, skipping."
+}
+
 # ---------------------------------------------------------------------------
 # 3. VLC SDK
 # ---------------------------------------------------------------------------
