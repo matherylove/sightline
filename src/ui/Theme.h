@@ -13,6 +13,7 @@ namespace Theme {
     //   --accent:       #4FA3A3
     //   --accent-hover: #66B8B8
     //   --accent-soft:  #1E3E42
+    //   --divider:      #1E252C   (subtle separator, darker than surface)
     //   --error:        #C96B6B
     //   --warning:      #C9A96B
 
@@ -21,6 +22,7 @@ namespace Theme {
     static const ImVec4 COL_CARD          = {0.082f, 0.102f, 0.122f, 1.0f}; // #151A1F
     static const ImVec4 COL_SURFACE2      = {0.106f, 0.133f, 0.157f, 1.0f}; // #1B2228
     static const ImVec4 COL_CONTRAST_V4   = {0.165f, 0.200f, 0.231f, 1.0f}; // #2A333B
+    static const ImVec4 COL_DIVIDER       = {0.118f, 0.145f, 0.173f, 1.0f}; // #1E252C — subtle separator line
     static const ImVec4 COL_ACCENT_V4     = {0.310f, 0.639f, 0.639f, 1.0f}; // #4FA3A3
     static const ImVec4 COL_ACCENT_HOV_V4 = {0.400f, 0.722f, 0.722f, 1.0f}; // #66B8B8
     static const ImVec4 COL_ACCENT_SOFT   = {0.118f, 0.243f, 0.259f, 1.0f}; // #1E3E42
@@ -32,7 +34,11 @@ namespace Theme {
     static const ImVec4 COL_WARNING       = {0.788f, 0.663f, 0.420f, 1.0f}; // #C9A96B
 
     // For legacy code using ImU32
-    inline ImU32 U32_BG()     { return ImGui::ColorConvertFloat4ToU32(COL_BG);       }
-    inline ImU32 U32_CARD()   { return ImGui::ColorConvertFloat4ToU32(COL_CARD);     }
-    inline ImU32 U32_ACCENT() { return ImGui::ColorConvertFloat4ToU32(COL_ACCENT_V4); }
+    inline ImU32 U32_BG()          { return ImGui::ColorConvertFloat4ToU32(COL_BG);        }
+    inline ImU32 U32_CARD()        { return ImGui::ColorConvertFloat4ToU32(COL_CARD);      }
+    inline ImU32 U32_ACCENT()      { return ImGui::ColorConvertFloat4ToU32(COL_ACCENT_V4); }
+    inline ImU32 U32_TEXT()        { return ImGui::ColorConvertFloat4ToU32(COL_TEXT);       }
+    inline ImU32 U32_TEXT_DIM()    { return ImGui::ColorConvertFloat4ToU32(COL_TEXT_DIM_V4); }
+    inline ImU32 U32_TEXT_FAINT()  { return ImGui::ColorConvertFloat4ToU32(COL_TEXT_FAINT); }
+    inline ImU32 U32_DIVIDER()     { return ImGui::ColorConvertFloat4ToU32(COL_DIVIDER);    }
 }
