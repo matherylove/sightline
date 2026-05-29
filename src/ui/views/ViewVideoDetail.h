@@ -4,6 +4,8 @@
 // New features added: VP9 quality selector, seek-on-quality-change, English UI,
 //                     Comments tab (InnerTube -> yt-dlp fallback, Load More),
 //                     Up Next panel (GetRelatedVideos async).
+// GUI-FIXES: FA6 icons, volume label, Subscribe fixed-width, title hierarchy,
+//            seekbar hit-target, Up Next header.
 
 #include "../AppState.h"
 #include "../Widgets.h"
@@ -13,6 +15,7 @@
 #include "../../config/PersistentData.h"
 #include "../../transcoder/FfmpegBootstrap.h"
 #include "DownloadDialog.h"
+#include "IconsFontAwesome6.h"
 #include <string>
 #include <vector>
 #include <cstdio>
@@ -254,12 +257,14 @@ static inline std::string VD_BuildUrl(const QualityOption& q) {
     return q.audioUrl.empty()?q.videoUrl:q.videoUrl+"\n"+q.audioUrl;
 }
 
-// Custom seekbar: teal accent fill, teal knob — coherente con el tema.
+// ---------------------------------------------------------------------------
+// Custom seekbar — larger hit target (SH=6, KR=7), teal accent fill
+// ---------------------------------------------------------------------------
 static float VD_Seekbar(float cx, float cy, float sw,
                          float pf, float bf, bool canSeek,
                          ImDrawList* dl, const char* id)
 {
-    const float SH=5.f, KR=6.f;
+    const float SH=6.f, KR=7.f;
     ImGui::SetCursorPos({cx,cy});
     ImGui::InvisibleButton(id,{sw,KR*2.f+SH});
     ImVec2 bMin=ImGui::GetItemRectMin();
@@ -269,13 +274,9 @@ static float VD_Seekbar(float cx, float cy, float sw,
     if ((ImGui::IsItemActive()||ImGui::IsItemDeactivatedAfterEdit())&&canSeek)
         result=clamp01((ImGui::GetIO().MousePos.x-sx)/sw);
     if (ImGui::IsItemHovered()) ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW);
-    // Track base
     dl->AddRectFilled({sx,sy},{sx+sw,sy+SH},IM_COL32(55,55,55,230),3);
-    // Buffer indicator
     if (bf>0.f&&bf<=1.f) dl->AddRectFilled({sx,sy},{sx+sw*bf,sy+SH},IM_COL32(130,130,130,130),3);
-    // Progress fill — accent teal del tema
     dl->AddRectFilled({sx,sy},{sx+sw*pf,sy+SH},Theme::U32_ACCENT(),3);
-    // Knob
     float kx=sx+sw*pf, ky=sy+SH*.5f;
     dl->AddCircleFilled({kx,ky},KR,ImGui::ColorConvertFloat4ToU32(Theme::COL_ACCENT_HOV_V4));
     dl->AddCircle      ({kx,ky},KR,IM_COL32(0,0,0,80),16,1.2f);
@@ -329,18 +330,14 @@ struct VD_CommentsCtx { std::string vid, token; AppState* state; };
 static DWORD WINAPI VD_CommentsThreadProc(LPVOID param) {
     VD_CommentsCtx* ctx = (VD_CommentsCtx*)param;
     AppState* st = ctx->state;
-
     CommentsPage page = InnerTube::GetComments(ctx->vid, ctx->token);
-
     for (auto& c : page.comments)
         st->pendingComments.comments.push_back(c);
-
     st->pendingComments.continuationToken = page.continuationToken;
     st->pendingComments.error             = page.error;
     st->pendingComments.ready             = true;
     st->pendingComments.loading           = false;
     st->commentsResolving.store(false);
-
     delete ctx;
     return 0;
 }
@@ -351,7 +348,6 @@ static inline void VD_RequestComments(AppState& state,
 {
     if (videoId.empty()) return;
     if (state.commentsResolving.load()) return;
-
     if (continuationToken.empty()) {
         state.pendingComments.comments.clear();
         state.pendingComments.continuationToken.clear();
@@ -359,14 +355,11 @@ static inline void VD_RequestComments(AppState& state,
         state.pendingComments.ready   = false;
         state.pendingComments.loadMore = false;
     }
-
     state.pendingComments.videoId  = videoId;
     state.pendingComments.loading  = true;
     state.commentsResolving.store(true);
-
     HANDLE hThread = CreateThread(NULL, 0, VD_CommentsThreadProc,
         new VD_CommentsCtx{videoId, continuationToken, &state}, 0, NULL);
-
     if (hThread) CloseHandle(hThread);
     else {
         state.pendingComments.loading = false;
@@ -383,15 +376,12 @@ struct VD_RelatedCtx { std::string vid; AppState* state; };
 static DWORD WINAPI VD_RelatedThreadProc(LPVOID param) {
     VD_RelatedCtx* ctx = (VD_RelatedCtx*)param;
     AppState* st = ctx->state;
-
     std::vector<RelatedItem> items = InnerTube::GetRelatedVideos(ctx->vid);
-
     st->pendingRelated.items   = std::move(items);
     st->pendingRelated.error   = st->pendingRelated.items.empty() ? "No results" : "";
     st->pendingRelated.ready   = true;
     st->pendingRelated.loading = false;
     st->relatedResolving.store(false);
-
     delete ctx;
     return 0;
 }
@@ -399,17 +389,14 @@ static DWORD WINAPI VD_RelatedThreadProc(LPVOID param) {
 static inline void VD_RequestRelated(AppState& state, const std::string& videoId) {
     if (videoId.empty()) return;
     if (state.relatedResolving.load()) return;
-
     state.pendingRelated.items.clear();
     state.pendingRelated.error.clear();
     state.pendingRelated.ready   = false;
     state.pendingRelated.loading = true;
     state.pendingRelated.videoId = videoId;
     state.relatedResolving.store(true);
-
     HANDLE hThread = CreateThread(NULL, 0, VD_RelatedThreadProc,
         new VD_RelatedCtx{videoId, &state}, 0, NULL);
-
     if (hThread) CloseHandle(hThread);
     else {
         state.pendingRelated.loading = false;
@@ -417,7 +404,9 @@ static inline void VD_RequestRelated(AppState& state, const std::string& videoId
     }
 }
 
-// Draw the Up Next / related videos panel. Called inside ##vd_right.
+// ---------------------------------------------------------------------------
+// VD_DrawRelatedPanel
+// ---------------------------------------------------------------------------
 static inline void VD_DrawRelatedPanel(AppState& state,
                                         VideoDetailState& vds,
                                         float panelW, float PAD)
@@ -426,7 +415,6 @@ static inline void VD_DrawRelatedPanel(AppState& state,
     const bool hasItems = !state.pendingRelated.items.empty();
     const bool hasError = !state.pendingRelated.error.empty() && !hasItems;
 
-    // Auto-trigger load when videoId changes
     if (!vds.videoId.empty() && vds.relatedLoadedForVideoId != vds.videoId && !loading) {
         vds.relatedLoadedForVideoId = vds.videoId;
         VD_RequestRelated(state, vds.videoId);
@@ -437,7 +425,6 @@ static inline void VD_DrawRelatedPanel(AppState& state,
         ImGui::TextColored(Theme::COL_TEXT_DIM_V4, "Loading...");
         return;
     }
-
     if (hasError) {
         ImGui::SetCursorPosX(PAD);
         ImGui::TextColored({1.f,0.4f,0.4f,1.f}, "%s", state.pendingRelated.error.c_str());
@@ -446,7 +433,6 @@ static inline void VD_DrawRelatedPanel(AppState& state,
             VD_RequestRelated(state, vds.videoId);
         return;
     }
-
     if (!hasItems) {
         ImGui::SetCursorPosX(PAD);
         ImGui::TextColored(Theme::COL_TEXT_DIM_V4, "Nothing to show yet.");
@@ -461,7 +447,6 @@ static inline void VD_DrawRelatedPanel(AppState& state,
 
     for (int i = 0; i < (int)state.pendingRelated.items.size(); i++) {
         const RelatedItem& it = state.pendingRelated.items[i];
-
         bool canPlay = !it.videoId.empty();
 
         ImGui::SetCursorPosX(0);
@@ -474,7 +459,6 @@ static inline void VD_DrawRelatedPanel(AppState& state,
         bool hovered = ImGui::IsItemHovered();
 
         ImDrawList* dl = ImGui::GetWindowDrawList();
-
         if (hovered && canPlay) {
             dl->AddRectFilled(rowStart,
                 {rowStart.x + panelW, rowStart.y + THUMB_H + ITEM_PAD*2.f},
@@ -482,7 +466,6 @@ static inline void VD_DrawRelatedPanel(AppState& state,
             ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
         }
 
-        // FIX 4: Thumbnail placeholder — color mas claro, distinguible del fondo negro del video
         ImVec2 thTL = {rowStart.x + PAD, rowStart.y + ITEM_PAD};
         ImVec2 thBR = {thTL.x + THUMB_W, thTL.y + THUMB_H};
         dl->AddRectFilled(thTL, thBR, IM_COL32(45, 45, 48, 255), 4.f);
@@ -490,8 +473,17 @@ static inline void VD_DrawRelatedPanel(AppState& state,
         if (!it.videoId.empty() && ThumbnailCache::s_instance) {
             IDirect3DTexture9* tex = ThumbnailCache::s_instance->Get(it.videoId);
             if (tex) {
+                // Correct UV crop to avoid black bars on 16:9 thumbnails
+                float uvY0 = 0.f, uvY1 = 1.f;
+                float srcAspect = 16.f/9.f;
+                float dstAspect = THUMB_W / THUMB_H;
+                if (srcAspect > dstAspect) {
+                    float crop = 1.f - dstAspect / srcAspect;
+                    uvY0 = crop * 0.5f;
+                    uvY1 = 1.f - crop * 0.5f;
+                }
                 dl->AddImage((ImTextureID)(uintptr_t)tex, thTL, thBR,
-                             {0,0}, {1,1}, IM_COL32(255,255,255,255));
+                             {0,uvY0}, {1,uvY1}, IM_COL32(255,255,255,255));
             } else {
                 float cx2 = (thTL.x + thBR.x) * 0.5f;
                 float cy2 = (thTL.y + thBR.y) * 0.5f;
@@ -504,7 +496,6 @@ static inline void VD_DrawRelatedPanel(AppState& state,
             }
         }
 
-        // Duration badge
         if (!it.duration.empty()) {
             ImVec2 ts = ImGui::CalcTextSize(it.duration.c_str());
             float bx = thBR.x - ts.x - 6.f;
@@ -512,8 +503,6 @@ static inline void VD_DrawRelatedPanel(AppState& state,
             dl->AddRectFilled({bx-3.f,by-2.f},{bx+ts.x+3.f,by+ts.y+2.f},IM_COL32(0,0,0,180),2.f);
             dl->AddText({bx,by}, IM_COL32(255,255,255,240), it.duration.c_str());
         }
-
-        // Playlist badge
         if (it.isPlaylist) {
             const char* lbl = "PLAYLIST";
             ImVec2 ts = ImGui::CalcTextSize(lbl);
@@ -522,7 +511,7 @@ static inline void VD_DrawRelatedPanel(AppState& state,
             dl->AddText({bx+3.f,by+2.f}, IM_COL32(200,200,200,230), lbl);
         }
 
-        // Title
+        // Title — full brightness
         ImGui::SetCursorPos({TEXT_X, rowY + ITEM_PAD});
         ImGui::PushTextWrapPos(TEXT_X + TEXT_W);
         const ImVec4 titleColor = canPlay ? Theme::COL_TEXT : ImVec4{0.47f, 0.47f, 0.47f, 1.f};
@@ -530,20 +519,18 @@ static inline void VD_DrawRelatedPanel(AppState& state,
         if ((int)displayTitle.size() > 80) displayTitle = displayTitle.substr(0,77) + "...";
         ImGui::TextColored(titleColor, "%s", displayTitle.c_str());
 
-        // Channel name
+        // Channel name — dimmed, smaller visual weight
         if (!it.channelName.empty()) {
             ImGui::SetCursorPosX(TEXT_X);
             ImGui::TextColored(Theme::COL_TEXT_DIM_V4, "%s", it.channelName.c_str());
         }
-
-        // View count
+        // View count — dimmed
         if (!it.viewCount.empty()) {
             ImGui::SetCursorPosX(TEXT_X);
             ImGui::TextColored(Theme::COL_TEXT_DIM_V4, "%s", it.viewCount.c_str());
         }
         ImGui::PopTextWrapPos();
 
-        // Handle click -> play
         if (clicked && canPlay) {
             state.pendingPlay             = PlayerRequest{};
             state.pendingPlay.videoId     = it.videoId;
@@ -558,12 +545,11 @@ static inline void VD_DrawRelatedPanel(AppState& state,
         ImGui::Separator();
         ImGui::PopStyleColor();
     }
-
     ImGui::Spacing();
 }
 
 // ===========================================================================
-// Draw comments tab
+// Comments tab
 // ===========================================================================
 static inline void VD_DrawCommentsTab(AppState& state,
                                        VideoDetailState& vds,
@@ -584,7 +570,6 @@ static inline void VD_DrawCommentsTab(AppState& state,
         ImGui::TextColored(Theme::COL_TEXT_DIM_V4, "Loading comments...");
         return;
     }
-
     if (!hasItems) {
         if (hasError) {
             ImGui::SetCursorPosX(PAD);
@@ -608,10 +593,8 @@ static inline void VD_DrawCommentsTab(AppState& state,
     for (const auto& c : state.pendingComments.comments) {
         ImGui::SetCursorPosX(PAD);
         ImVec2 rowStart = ImGui::GetCursorScreenPos();
-
         ImDrawList* dl = ImGui::GetWindowDrawList();
-        ImVec2 avCenter = { rowStart.x + AVATAR_SZ * .5f,
-                            rowStart.y + AVATAR_SZ * .5f };
+        ImVec2 avCenter = { rowStart.x + AVATAR_SZ * .5f, rowStart.y + AVATAR_SZ * .5f };
         dl->AddCircleFilled(avCenter, AVATAR_SZ * .5f, IM_COL32(60, 60, 60, 255));
         if (!c.authorName.empty()) {
             char letter[2] = { (char)toupper((unsigned char)c.authorName[0]), 0 };
@@ -619,28 +602,22 @@ static inline void VD_DrawCommentsTab(AppState& state,
             dl->AddText({ avCenter.x - ts.x * .5f, avCenter.y - ts.y * .5f },
                         IM_COL32(200, 200, 200, 255), letter);
         }
-
         ImGui::SetCursorPos({
             ImGui::GetCursorPosX() + AVATAR_SZ + 10.f,
             ImGui::GetCursorPosY()
         });
         ImGui::PushTextWrapPos(TEXT_X + TEXT_W);
-
-        if (c.isAuthor) {
+        if (c.isAuthor)
             ImGui::TextColored(Theme::COL_ACCENT_V4, "%s", c.authorName.c_str());
-        } else {
+        else
             ImGui::TextColored(Theme::COL_TEXT_DIM_V4, "%s", c.authorName.empty() ? "Unknown" : c.authorName.c_str());
-        }
         ImGui::SameLine(0, 8);
-
         if (!c.publishedAt.empty())
             ImGui::TextColored(Theme::COL_TEXT_DIM_V4, "%s", c.publishedAt.c_str());
-
         if (!c.likeCount.empty()) {
             ImGui::SameLine(0, 8);
             ImGui::TextColored({0.9f, 0.75f, 0.2f, 0.85f}, "%s", c.likeCount.c_str());
         }
-
         if (!c.text.empty()) {
             ImGui::SetCursorPosX(TEXT_X);
             ImGui::PushStyleColor(ImGuiCol_Text, Theme::COL_TEXT);
@@ -648,7 +625,6 @@ static inline void VD_DrawCommentsTab(AppState& state,
             ImGui::PopStyleColor();
         }
         ImGui::PopTextWrapPos();
-
         ImGui::SetCursorPosX(0);
         ImGui::Spacing();
         ImGui::SetCursorPosX(PAD);
@@ -663,21 +639,18 @@ static inline void VD_DrawCommentsTab(AppState& state,
         ImGui::TextColored({1.f,0.4f,0.4f,1.f}, "Error loading more: %s",
                            state.pendingComments.error.c_str());
     }
-
     if (hasMore && !loading) {
         ImGui::SetCursorPosX(PAD);
         ImGui::PushStyleColor(ImGuiCol_Button,        Theme::COL_SURFACE2);
         ImGui::PushStyleColor(ImGuiCol_ButtonHovered, Theme::COL_ACCENT_SOFT);
         ImGui::PushStyleColor(ImGuiCol_ButtonActive,  Theme::COL_ACCENT_V4);
         if (ImGui::Button("Load more comments", {INNER_W, 30.f}))
-            VD_RequestComments(state, vds.videoId,
-                               state.pendingComments.continuationToken);
+            VD_RequestComments(state, vds.videoId, state.pendingComments.continuationToken);
         ImGui::PopStyleColor(3);
     } else if (loading && hasItems) {
         ImGui::SetCursorPosX(PAD);
         ImGui::TextColored(Theme::COL_TEXT_DIM_V4, "Loading more...");
     }
-
     ImGui::Spacing(); ImGui::Spacing();
 }
 
@@ -700,7 +673,6 @@ inline void DrawVideoDetailView(
         return;
     }
 
-    // -- Absorb new play request
     if (state.playRequested) {
         state.playRequested = false;
         vds.player.Stop();
@@ -721,19 +693,16 @@ inline void DrawVideoDetailView(
         vds.description = state.pendingPlay.description;
         vds.videoId     = state.pendingPlay.videoId;
         vds.streamUrl.clear();
-        // Reset comments for new video
         vds.commentsLoadedForVideoId.clear();
         vds.commentsTabOpened = false;
         state.pendingComments = PendingComments{};
         state.commentsResolving.store(false);
-        // Reset related for new video
         vds.relatedLoadedForVideoId.clear();
         state.pendingRelated = PendingRelated{};
         state.relatedResolving.store(false);
         if (!vds.videoId.empty()) PersistentData::PushHistory(vds.videoId, vds.title);
     }
 
-    // Sync metadata that arrives late from the resolver
     if (state.pendingPlay.videoId == vds.videoId) {
         if (vds.title.empty()       && !state.pendingPlay.title.empty())       vds.title=state.pendingPlay.title;
         if (vds.channelName.empty() && !state.pendingPlay.channelName.empty()) vds.channelName=state.pendingPlay.channelName;
@@ -743,7 +712,6 @@ inline void DrawVideoDetailView(
         if (vds.duration.empty()    && !state.pendingPlay.duration.empty())    vds.duration=state.pendingPlay.duration;
     }
 
-    // Stream URL arrived from resolver — no videoId guard so it always fires
     if (!state.streamResolving.load() && vds.streamUrl.empty() && !state.pendingPlay.videoUrl.empty()) {
         vds.streamUrl = state.pendingPlay.videoUrl;
         if (vds.qualities.empty()) {
@@ -759,7 +727,7 @@ inline void DrawVideoDetailView(
             VD_SyncDlDialogQualities(vds);
         }
     }
-    // Absorb VP9 qualities
+
     if (state.pendingPlay.vp9QualitiesReady &&
         state.pendingPlay.videoId == vds.videoId &&
         vds.qualities.size() <= 1)
@@ -777,7 +745,6 @@ inline void DrawVideoDetailView(
 
     const bool streamError = !vds.streamUrl.empty() && vds.streamUrl.rfind("ERROR:",0)==0;
 
-    // Apply pending quality switch
     if (vds.pendingQualityIdx >= 0) {
         vds.qualityIdx        = vds.pendingQualityIdx;
         vds.pendingQualityIdx = -1;
@@ -797,7 +764,6 @@ inline void DrawVideoDetailView(
 
     // =====================================================================
     // LAYOUT
-    // FIX 6: umbral wide subido a 960px; RW proporcional para evitar clipping
     // =====================================================================
     const float PAD     = 12.0f;
     const bool  wide    = (w >= 960.0f);
@@ -806,8 +772,8 @@ inline void DrawVideoDetailView(
 
     const float BH      = 28.0f;
     const float BACKH   = 36.0f;
-    const float SB_KR   = 6.0f;
-    const float SB_SH   = 5.0f;
+    const float SB_KR   = 7.0f;
+    const float SB_SH   = 6.0f;
     const float SB_GAP  = 8.0f;
     const float SB_ROW  = SB_KR*2.f + SB_SH + 14.f;
     const float CTR_H   = BH + 10.0f;
@@ -850,12 +816,14 @@ inline void DrawVideoDetailView(
     ImGui::PopStyleColor(); ImGui::PopStyleVar();
     ImDrawList* dlTop=ImGui::GetWindowDrawList();
 
-    // Back button
+    // -----------------------------------------------------------------------
+    // Back button — FA6 chevron-left
+    // -----------------------------------------------------------------------
     ImGui::SetCursorPos({PAD,(BACKH-BH)*.5f});
     ImGui::PushStyleColor(ImGuiCol_Button,       {0,0,0,0});
     ImGui::PushStyleColor(ImGuiCol_ButtonHovered,{.22f,.22f,.22f,1});
     ImGui::PushStyleColor(ImGuiCol_ButtonActive, {.32f,.32f,.32f,1});
-    if (ImGui::Button("< Back",{72,BH})) {
+    if (ImGui::Button(ICON_FA_CHEVRON_LEFT "  Back",{84,BH})) {
         vds.player.Stop();
         vds.playStarted=vds.playerInited=false;
         vds.streamUrl.clear(); state.pendingPlay.videoUrl.clear();
@@ -942,7 +910,6 @@ inline void DrawVideoDetailView(
 
     // -----------------------------------------------------------------------
     // SEEKBAR ROW
-    // FIX 10: sbW reducida por PAD en el lado derecho para no salirse de LW
     // -----------------------------------------------------------------------
     {
         const float sbX=PAD+2.f, sbW=LW-PAD*2.f-4.f-PAD;
@@ -963,7 +930,7 @@ inline void DrawVideoDetailView(
     }
 
     // -----------------------------------------------------------------------
-    // TRANSPORT ROW
+    // TRANSPORT ROW — FA6 icons
     // -----------------------------------------------------------------------
     float ctrRowY;
     {
@@ -976,16 +943,18 @@ inline void DrawVideoDetailView(
         ImGui::PushStyleColor(ImGuiCol_ButtonActive, {.38f,.38f,.38f,1});
         if (!canCtrl) ImGui::BeginDisabled();
 
-        if (ImGui::Button("|<",{BW,BH})) vds.player.SeekTo(0);
+        if (ImGui::Button(ICON_FA_BACKWARD_STEP,{BW,BH})) vds.player.SeekTo(0);
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("Restart");
         ImGui::SameLine(0,G);
-        if (ImGui::Button("<<",{BW,BH})) { double np=pos-10; vds.player.SeekTo(np<0?0:np); }
+        if (ImGui::Button(ICON_FA_BACKWARD,{BW,BH})) { double np=pos-10; vds.player.SeekTo(np<0?0:np); }
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("-10s");
         ImGui::SameLine(0,G);
 
+        // Play/Pause — accent when paused
         ImGui::PushStyleColor(ImGuiCol_Button,       isPlaying?ImVec4{.15f,.15f,.15f,1}:Theme::COL_ACCENT_V4);
         ImGui::PushStyleColor(ImGuiCol_ButtonHovered,Theme::COL_ACCENT_V4);
-        if (ImGui::Button(isPlaying?" || ":" >  ",{BW+16.f,BH})) {
+        const char* playIcon = isPlaying ? ICON_FA_PAUSE : ICON_FA_PLAY;
+        if (ImGui::Button(playIcon,{BW+16.f,BH})) {
             if (isPlaying) vds.player.Pause();
             else if (ps==PlayerState::Stopped||ps==PlayerState::Idle) {
                 if (!vds.lastPlayedUrl.empty()) vds.player.Open(vds.lastPlayedUrl);
@@ -993,17 +962,17 @@ inline void DrawVideoDetailView(
         }
         ImGui::PopStyleColor(2);
         ImGui::SameLine(0,G);
-        if (ImGui::Button(">>",{BW,BH})) { double np=pos+10; vds.player.SeekTo(np>dur?dur:np); }
+        if (ImGui::Button(ICON_FA_FORWARD,{BW,BH})) { double np=pos+10; vds.player.SeekTo(np>dur?dur:np); }
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("+10s");
         ImGui::SameLine(0,G);
-        if (ImGui::Button(">|",{BW,BH})) vds.player.SeekTo(dur);
+        if (ImGui::Button(ICON_FA_FORWARD_STEP,{BW,BH})) vds.player.SeekTo(dur);
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("End");
 
         if (!canCtrl) ImGui::EndDisabled();
         ImGui::PopStyleColor(3);
 
         ImGui::SameLine(0,10);
-        // FIX 3: dot de estado — mismo offset vertical que los botones de transporte
+        // Status dot
         {
             ImU32 dc=IM_COL32(90,90,90,255); const char* dt="";
             if (state.streamResolving.load())     { dc=IM_COL32(255,200,0,255); dt="Resolving..."; }
@@ -1017,7 +986,6 @@ inline void DrawVideoDetailView(
                 default: break;
             }
             ImVec2 dotBase=ImGui::GetCursorScreenPos();
-            // Alinear el dot con el centro vertical del boton BH
             float dotOffY = (BH - 10.f) * .5f;
             ImVec2 dotP = {dotBase.x + 5.f, dotBase.y + dotOffY + 5.f};
             dlTop->AddCircleFilled(dotP, 5.f, dc);
@@ -1026,22 +994,46 @@ inline void DrawVideoDetailView(
                 ImGui::SetTooltip("%s",dt);
         }
 
-        const float VOL_W=90.f, QUAL_W=130.f, MG=6.f;
-        ImGui::SetCursorPos({LW-PAD-QUAL_W-MG-VOL_W,ctrRowY+(CTR_H-BH)*.5f});
-        // Volume slider — colores del tema
+        // -----------------------------------------------------------------------
+        // Volume — speaker icon label + standalone slider (no inline text)
+        // -----------------------------------------------------------------------
+        const float VOL_W=80.f, QUAL_W=130.f, MG=6.f;
+        // Icon label
+        float volRowY = ctrRowY+(CTR_H-BH)*.5f;
+        ImGui::SetCursorPos({LW-PAD-QUAL_W-MG-VOL_W-20.f, volRowY});
+        const char* volIcon = vds.volume == 0
+            ? ICON_FA_VOLUME_XMARK
+            : (vds.volume < 40 ? ICON_FA_VOLUME_LOW : ICON_FA_VOLUME_HIGH);
+        ImGui::PushStyleColor(ImGuiCol_Button, {0,0,0,0});
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, {0,0,0,0});
+        // Mute toggle on icon click
+        static int prevVol = 80;
+        if (ImGui::Button(volIcon, {20.f, BH})) {
+            if (vds.volume > 0) { prevVol = vds.volume; vds.volume = 0; }
+            else                { vds.volume = prevVol; }
+            vds.player.SetVolume(vds.volume);
+        }
+        ImGui::PopStyleColor(2);
+        ImGui::SameLine(0, 2);
+        // Slider — no format string (label is external)
         ImGui::PushStyleColor(ImGuiCol_SliderGrab,      Theme::COL_ACCENT_V4);
         ImGui::PushStyleColor(ImGuiCol_SliderGrabActive,Theme::COL_ACCENT_HOV_V4);
         ImGui::PushStyleColor(ImGuiCol_FrameBg,         Theme::COL_SURFACE2);
         ImGui::PushStyleColor(ImGuiCol_FrameBgHovered,  Theme::COL_CONTRAST_V4);
         ImGui::SetNextItemWidth(VOL_W);
         int vol=vds.volume;
-        if (ImGui::SliderInt("##vol",&vol,0,100,"Vol %d%%")) { vds.volume=vol; vds.player.SetVolume(vol); }
+        if (ImGui::SliderInt("##vol",&vol,0,100,"")) {
+            vds.volume=vol; vds.player.SetVolume(vol);
+        }
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Volume: %d%%", vds.volume);
         ImGui::PopStyleColor(4);
         ImGui::SameLine(0,MG);
 
+        // Quality combo
         if (!vds.qualities.empty()) {
-            bool loading=(vds.qualities.size()==1 && !vds.qualities[0].videoUrl.empty());
-            const char* cur=loading?"Loading qualities...":vds.qualities[vds.qualityIdx].label.c_str();
+            bool loading2=(vds.qualities.size()==1 && !vds.qualities[0].videoUrl.empty());
+            const char* cur=loading2?"Loading qualities...":vds.qualities[vds.qualityIdx].label.c_str();
             ImGui::PushStyleColor(ImGuiCol_FrameBg,       Theme::COL_SURFACE2);
             ImGui::PushStyleColor(ImGuiCol_FrameBgHovered,Theme::COL_CONTRAST_V4);
             ImGui::PushStyleColor(ImGuiCol_PopupBg,       Theme::COL_CARD);
@@ -1064,8 +1056,7 @@ inline void DrawVideoDetailView(
     }
 
     // -----------------------------------------------------------------------
-    // ACTION ROW  [v] Download   [+] Favorite   [^] Window   [/] Fullscreen
-    // FIX 2: botones con padding lateral + FrameRounding=4 (no tocan el borde)
+    // ACTION ROW — FA6 icons, equal-width flex buttons
     // -----------------------------------------------------------------------
     {
         float actRowY=ctrRowY+CTR_H;
@@ -1076,18 +1067,21 @@ inline void DrawVideoDetailView(
         ImGui::PushStyleColor(ImGuiCol_ButtonActive,  Theme::COL_ACCENT_V4);
         ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 4.f);
 
-        if (ImGui::Button("[v] Download",{actBtnW,BH}))
+        if (ImGui::Button(ICON_FA_DOWNLOAD "  Download",{actBtnW,BH}))
             vds.dlDialog.open=true;
 
         ImGui::SameLine(0,0);
         bool isFav = PersistentData::IsInPlaylist("Favorites", vds.videoId);
-        if (ImGui::Button(isFav?"[-] Favorite":"[+] Favorite",{actBtnW,BH})) {
+        const char* favLabel = isFav
+            ? ICON_FA_HEART "  Saved"
+            : ICON_FA_HEART "  Favorite";
+        if (ImGui::Button(favLabel,{actBtnW,BH})) {
             if (isFav) PersistentData::RemoveFromPlaylist("Favorites", vds.videoId);
             else       PersistentData::AddToPlaylist("Favorites", vds.videoId, vds.title);
         }
 
         ImGui::SameLine(0,0);
-        if (ImGui::Button("[^] Window",{actBtnW,BH})) {
+        if (ImGui::Button(ICON_FA_WINDOW_RESTORE "  Window",{actBtnW,BH})) {
             if (!vds.popup.open&&!vds.videoId.empty()&&!vds.streamUrl.empty()) {
                 double startPos=vds.player.GetPosition();
                 vds.popup.startPos=startPos;
@@ -1096,7 +1090,7 @@ inline void DrawVideoDetailView(
             }
         }
         ImGui::SameLine(0,0);
-        if (ImGui::Button("[/] Fullscreen",{actBtnW,BH}))
+        if (ImGui::Button(vds.fullscreen ? ICON_FA_COMPRESS "  Exit FS" : ICON_FA_EXPAND "  Fullscreen",{actBtnW,BH}))
             vds.fullscreen=!vds.fullscreen;
 
         ImGui::PopStyleVar();
@@ -1106,7 +1100,7 @@ inline void DrawVideoDetailView(
     ImGui::EndChild(); // ##vd_top
 
     // =====================================================================
-    // BOTTOM ZONE  (Description + Comments tabs)
+    // BOTTOM ZONE
     // =====================================================================
     if (botH > 10.f) {
         ImGui::SetCursorPos({0,topZoneH});
@@ -1116,7 +1110,7 @@ inline void DrawVideoDetailView(
             ImGuiWindowFlags_NoScrollbar|ImGuiWindowFlags_NoScrollWithMouse);
         ImGui::PopStyleColor(); ImGui::PopStyleVar();
 
-        // FIX 8: Tab bar con FrameRounding=3 para bordes mas suaves
+        // Tab bar
         const int NTABS=(int)VideoDetailTab::COUNT;
         float tabW=LW/(float)NTABS;
         ImGui::SetCursorPos({0,0});
@@ -1135,7 +1129,6 @@ inline void DrawVideoDetailView(
             if (ti<NTABS-1) ImGui::SameLine(0,0);
         }
 
-        // Content area
         float contentH=botH-BH;
         ImGui::SetCursorPos({0,BH});
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding,{0,0});
@@ -1146,16 +1139,22 @@ inline void DrawVideoDetailView(
 
         if (vds.activeTab==VideoDetailTab::Description) {
             ImGui::SetCursorPos({PAD,PAD});
-            // Title
             ImGui::PushTextWrapPos(LW-PAD);
-            ImGui::PushStyleColor(ImGuiCol_Text,Theme::COL_TEXT);
-            if (!vds.title.empty()) ImGui::TextWrapped("%s",vds.title.c_str());
-            ImGui::PopStyleColor();
 
-            // Channel name
+            // Title — bold, full brightness
+            if (!vds.title.empty()) {
+                ImGui::PushStyleColor(ImGuiCol_Text, Theme::COL_TEXT);
+                ImGui::PushFont(ImGui::GetIO().Fonts->Fonts.Size > 1
+                    ? ImGui::GetIO().Fonts->Fonts[0] : nullptr);
+                ImGui::TextWrapped("%s", vds.title.c_str());
+                if (ImGui::GetIO().Fonts->Fonts.Size > 1) ImGui::PopFont();
+                ImGui::PopStyleColor();
+            }
+
+            // Channel — accent colour, visually smaller (same font but dim weight)
             if (!vds.channelName.empty()) {
                 ImGui::SetCursorPosX(PAD);
-                ImGui::PushStyleColor(ImGuiCol_Text,Theme::COL_ACCENT_V4);
+                ImGui::PushStyleColor(ImGuiCol_Text, Theme::COL_ACCENT_V4);
                 if (ImGui::Selectable(vds.channelName.c_str(),false,
                         ImGuiSelectableFlags_None,{0,0})) {
                     snprintf(state.searchBuf, sizeof(state.searchBuf),
@@ -1165,22 +1164,22 @@ inline void DrawVideoDetailView(
                 ImGui::PopStyleColor();
             }
 
-            // FIX 7: Subscribe button en linea propia (NewLine) para no chocar con el canal
-            ImGui::NewLine();
+            // Subscribe button — fixed width, bell icon
             ImGui::SetCursorPosX(PAD);
             ImGui::PushStyleColor(ImGuiCol_Button,        Theme::COL_SURFACE2);
             ImGui::PushStyleColor(ImGuiCol_ButtonHovered, Theme::COL_ACCENT_SOFT);
             ImGui::PushStyleColor(ImGuiCol_ButtonActive,  Theme::COL_ACCENT_V4);
-            if (ImGui::Button("[+] Subscribe",{0,0}))
+            if (ImGui::Button(ICON_FA_BELL "  Subscribe", {120.f, BH}))
                 ImGui::SetTooltip("Subscribe not implemented");
             ImGui::PopStyleColor(3);
 
-            // FIX 1: viewCount ya incluye "views" desde InnerTube — no concatenar " views"
+            // Meta line — dimmed, one line
             ImGui::SetCursorPosX(PAD);
             std::string meta;
             if (!vds.viewCount.empty()) meta += vds.viewCount;
-            if (!vds.duration.empty())  { if (!meta.empty()) meta += " - "; meta += vds.duration; }
-            if (!meta.empty()) ImGui::TextColored(Theme::COL_TEXT_DIM_V4,"%s",meta.c_str());
+            if (!vds.duration.empty())  { if (!meta.empty()) meta += " \xc2\xb7 "; meta += vds.duration; }
+            if (!meta.empty())
+                ImGui::TextColored(Theme::COL_TEXT_DIM_V4, "%s", meta.c_str());
 
             ImGui::Spacing();
             ImGui::SetCursorPosX(PAD);
@@ -1189,11 +1188,11 @@ inline void DrawVideoDetailView(
             ImGui::PopStyleColor();
             ImGui::Spacing();
 
-            // Description
+            // Description body
             if (!vds.description.empty()) {
                 ImGui::SetCursorPosX(PAD);
-                ImGui::PushStyleColor(ImGuiCol_Text,Theme::COL_TEXT_DIM_V4);
-                ImGui::TextWrapped("%s",vds.description.c_str());
+                ImGui::PushStyleColor(ImGuiCol_Text, Theme::COL_TEXT_DIM_V4);
+                ImGui::TextWrapped("%s", vds.description.c_str());
                 ImGui::PopStyleColor();
             }
             ImGui::PopTextWrapPos();
@@ -1218,8 +1217,7 @@ inline void DrawVideoDetailView(
             ImGuiWindowFlags_NoScrollbar|ImGuiWindowFlags_NoScrollWithMouse);
         ImGui::PopStyleColor(); ImGui::PopStyleVar();
 
-        // FIX 5: Search bar con borde visible (FrameBorderSize=1)
-        ImGui::SetCursorPos({0,0});
+        // Search bar inside sidebar
         {
             float sbW2=RW-PAD*2.f;
             ImGui::SetCursorPos({PAD,8.f});
@@ -1237,7 +1235,7 @@ inline void DrawVideoDetailView(
             ImGui::PushStyleColor(ImGuiCol_Button,        Theme::COL_ACCENT_V4);
             ImGui::PushStyleColor(ImGuiCol_ButtonHovered, Theme::COL_ACCENT_HOV_V4);
             ImGui::PushStyleColor(ImGuiCol_ButtonActive,  Theme::COL_ACCENT_SOFT);
-            bool go=ImGui::Button("Search",{0,0});
+            bool go=ImGui::Button(ICON_FA_MAGNIFYING_GLASS,{BH,BH});
             ImGui::PopStyleColor(3);
             if ((enter||go)&&srchBuf[0]) {
                 snprintf(state.searchBuf, sizeof(state.searchBuf), "%s", srchBuf);
@@ -1245,12 +1243,19 @@ inline void DrawVideoDetailView(
             }
         }
 
+        // "Up Next" section header
         ImGui::Spacing();
         ImGui::SetCursorPosX(PAD);
-        ImGui::TextColored(Theme::COL_TEXT_DIM_V4,"Up Next");
+        ImGui::PushStyleColor(ImGuiCol_Text, Theme::COL_TEXT);
+        ImGui::Text("Up Next");
+        ImGui::PopStyleColor();
+        ImGui::SetCursorPosX(PAD);
+        ImGui::PushStyleColor(ImGuiCol_Separator, ImVec4{1,1,1,0.08f});
+        ImGui::Separator();
+        ImGui::PopStyleColor();
         ImGui::Spacing();
 
-        // FIX 9: altura del child ##vd_rel correcta (80px para search bar + label + spacing)
+        // Related list scroll area
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding,{0,0});
         ImGui::PushStyleColor(ImGuiCol_ChildBg,{0,0,0,0});
         ImGui::BeginChild("##vd_rel",{RW,rpH-80.f},false,0);
@@ -1262,10 +1267,6 @@ inline void DrawVideoDetailView(
         ImGui::EndChild(); // ##vd_right
     }
 
-    // =====================================================================
-    // Download dialog
-    // =====================================================================
     DrawDownloadDialog(vds.dlDialog, mainHwnd);
-
     ImGui::End(); // ##vd
 }

@@ -1,6 +1,7 @@
 #include "MainWindow.h"
 #include "Theme.h"
 #include "CTLogger.h"
+#include "IconsFontAwesome6.h"
 #include "../extractor/InnerTube.h"
 #include "../player/PlayerLauncher.h"
 #include "../config/Config.h"
@@ -125,14 +126,34 @@ void MainWindow::ResetD3D() {
     m_thumbCache.OnDeviceReset(m_pDevice);
 }
 
+// ---------------------------------------------------------------------------
+// Helper: returns the directory that contains the running executable.
+// Result has a trailing backslash.
+// ---------------------------------------------------------------------------
+static std::string GetExeDir() {
+    char buf[MAX_PATH] = {};
+    GetModuleFileNameA(NULL, buf, MAX_PATH);
+    std::string p(buf);
+    auto pos = p.rfind('\\');
+    return (pos != std::string::npos) ? p.substr(0, pos + 1) : p + "\\";
+}
+
+// ---------------------------------------------------------------------------
+// LoadUIFont
+// Loads the main UI font (Verdana / Tahoma / Arial fallback chain) and then
+// MERGES Font Awesome 6 Solid on top so that FA glyph strings render inline
+// with normal text.  The icon font is looked for next to the executable and
+// in an assets/ sub-folder; if neither is present the merge is simply skipped
+// and all icon labels fall back to their quoted ASCII alternatives.
+// ---------------------------------------------------------------------------
 static void LoadUIFont() {
     ImGuiIO& io = ImGui::GetIO();
 
-    // Base glyph ranges: Latin + Latin Extended + General Punctuation + Arrows
-    static const ImWchar kRanges[] = {
-        0x0020, 0x017E,
-        0x2000, 0x206F,
-        0x2190, 0x21FF,
+    // --- 1. Main proportional font (Latin + arrows range) ---
+    static const ImWchar kBaseRanges[] = {
+        0x0020, 0x017E,   // Basic Latin + Latin Extended-A
+        0x2000, 0x206F,   // General Punctuation
+        0x2190, 0x21FF,   // Arrows
         0,
     };
     const char* kCandidates[] = {
@@ -141,55 +162,62 @@ static void LoadUIFont() {
         "C:/Windows/Fonts/arial.ttf",
         nullptr
     };
+    ImFontConfig cfgBase;
+    cfgBase.OversampleH = 2;
+    cfgBase.OversampleV = 1;
+    cfgBase.PixelSnapH  = true;
 
-    ImFontConfig cfg;
-    cfg.OversampleH = 2;
-    cfg.OversampleV = 1;
-    cfg.PixelSnapH  = true;
-
-    bool baseLoaded = false;
+    ImFont* baseFont = nullptr;
     for (int i = 0; kCandidates[i]; i++) {
         DWORD attr = GetFileAttributesA(kCandidates[i]);
         if (attr == INVALID_FILE_ATTRIBUTES || (attr & FILE_ATTRIBUTE_DIRECTORY))
             continue;
-        ImFont* f = io.Fonts->AddFontFromFileTTF(kCandidates[i], 14.0f, &cfg, kRanges);
-        if (f) {
+        baseFont = io.Fonts->AddFontFromFileTTF(kCandidates[i], 14.0f, &cfgBase, kBaseRanges);
+        if (baseFont) {
             CTLogger::LogC('I', "[Font] Loaded base font: %s", kCandidates[i]);
-            baseLoaded = true;
             break;
         }
     }
-    if (!baseLoaded) {
-        io.Fonts->AddFontDefault();
+    if (!baseFont)
         CTLogger::LogC('W', "[Font] No TTF found, using ProggyClean default.");
-    }
 
-    // Merge Font Awesome 6 Solid into the base font
-    // fa-solid-900.ttf must live next to ClientTube.exe in assets/
-    const char* kFAPaths[] = {
-        "assets/fa-solid-900.ttf",
-        "../assets/fa-solid-900.ttf",
-        nullptr
+    // --- 2. Font Awesome 6 Solid --- merge into the same atlas slot ---
+    // Search order: exe dir, then exe dir/assets/
+    std::string exeDir = GetExeDir();
+    const std::string kFAName = "fa-solid-900.ttf";
+    std::string faCandidates[] = {
+        exeDir + kFAName,
+        exeDir + "assets\\" + kFAName,
+        ".\\" + kFAName,
+        ".\\assets\\" + kFAName,
     };
-    static const ImWchar kIconRanges[] = { ICON_MIN_FA, ICON_MAX_16_FA, 0 };
-    ImFontConfig icfg;
-    icfg.MergeMode        = true;
-    icfg.PixelSnapH       = true;
-    icfg.GlyphMinAdvanceX = 14.0f;  // keep icons monospaced with the text
-    bool iconLoaded = false;
-    for (int i = 0; kFAPaths[i]; i++) {
-        DWORD attr = GetFileAttributesA(kFAPaths[i]);
+
+    static const ImWchar kIconRanges[] = {
+        ICON_MIN_FA, ICON_MAX_FA,
+        0,
+    };
+
+    for (const auto& faPath : faCandidates) {
+        DWORD attr = GetFileAttributesA(faPath.c_str());
         if (attr == INVALID_FILE_ATTRIBUTES || (attr & FILE_ATTRIBUTE_DIRECTORY))
             continue;
-        ImFont* fi = io.Fonts->AddFontFromFileTTF(kFAPaths[i], 14.0f, &icfg, kIconRanges);
-        if (fi) {
-            CTLogger::LogC('I', "[Font] Merged Font Awesome 6: %s", kFAPaths[i]);
-            iconLoaded = true;
-            break;
+
+        ImFontConfig cfgIcons;
+        cfgIcons.MergeMode        = true;   // merge into the previous font
+        cfgIcons.PixelSnapH       = true;
+        cfgIcons.GlyphMinAdvanceX = 14.0f;  // keep icon glyphs monospaced
+        cfgIcons.OversampleH      = 2;
+        cfgIcons.OversampleV      = 1;
+
+        ImFont* iconFont = io.Fonts->AddFontFromFileTTF(
+            faPath.c_str(), 14.0f, &cfgIcons, kIconRanges);
+        if (iconFont) {
+            CTLogger::LogC('I', "[Font] Merged FA6 icons from: %s", faPath.c_str());
+            return;
         }
     }
-    if (!iconLoaded)
-        CTLogger::LogC('W', "[Font] fa-solid-900.ttf not found — icons will show as rectangles.");
+    CTLogger::LogC('W', "[Font] fa-solid-900.ttf not found — icon glyphs will show as '?'. "
+                        "Place fa-solid-900.ttf next to Sightline.exe (see assets/README_FONTS.md).");
 }
 
 void MainWindow::ApplyTheme() {
@@ -200,11 +228,18 @@ void MainWindow::ApplyTheme() {
     s.FrameRounding     = 4.0f;
     s.ScrollbarRounding = 4.0f;
     s.GrabRounding      = 4.0f;
-    s.FramePadding      = ImVec2(8, 5);
-    s.ItemSpacing       = ImVec2(8, 6);
+    s.TabRounding       = 3.0f;
+    s.ChildRounding     = 4.0f;
+    s.PopupRounding     = 4.0f;
+    s.FramePadding      = ImVec2(10.0f, 6.0f);
+    s.ItemSpacing       = ImVec2(8.0f, 8.0f);
+    s.ItemInnerSpacing  = ImVec2(6.0f, 6.0f);
+    s.CellPadding       = ImVec2(6.0f, 4.0f);
+    s.ScrollbarSize     = 8.0f;
     s.WindowBorderSize  = 0.0f;
     s.FrameBorderSize   = 1.0f;
-    s.ScrollbarSize     = 12.0f;
+    s.ButtonTextAlign   = ImVec2(0.5f, 0.5f);
+
     ImVec4* c = s.Colors;
     c[ImGuiCol_WindowBg]             = Theme::COL_BG;
     c[ImGuiCol_ChildBg]              = Theme::COL_CARD;
@@ -218,8 +253,8 @@ void MainWindow::ApplyTheme() {
     c[ImGuiCol_MenuBarBg]            = Theme::COL_CARD;
     c[ImGuiCol_ScrollbarBg]          = Theme::COL_BG;
     c[ImGuiCol_ScrollbarGrab]        = Theme::COL_CONTRAST_V4;
-    c[ImGuiCol_ScrollbarGrabHovered] = Theme::COL_ACCENT_V4;
-    c[ImGuiCol_ScrollbarGrabActive]  = Theme::COL_ACCENT_V4;
+    c[ImGuiCol_ScrollbarGrabHovered] = Theme::COL_SURFACE2;
+    c[ImGuiCol_ScrollbarGrabActive]  = Theme::COL_CONTRAST_V4;
     c[ImGuiCol_Button]               = Theme::COL_CONTRAST_V4;
     c[ImGuiCol_ButtonHovered]        = Theme::COL_ACCENT_V4;
     c[ImGuiCol_ButtonActive]         = Theme::COL_ACCENT_HOV_V4;
@@ -380,6 +415,7 @@ void MainWindow::DoResolveStream(const std::string& videoId) {
 
 void MainWindow::DrawTopBar(float w) {
     const float TOP_H  = 48.0f;
+    const float BH     = 28.0f;
     const float BTN_W  = 40.0f;
     const float SRCH_W = 200.0f;
     const float SBTN_W = 76.0f;
@@ -398,17 +434,20 @@ void MainWindow::DrawTopBar(float w) {
         ImGuiWindowFlags_NoBringToFrontOnFocus);
     ImGui::PopStyleColor();
 
-    float itemY = (TOP_H - 28.0f) * 0.5f;
+    float itemY = (TOP_H - BH) * 0.5f;
 
+    // Home / logo button — FA6 house icon
     ImGui::SetCursorPos(ImVec2(R_PAD, itemY));
     ImGui::PushStyleColor(ImGuiCol_Button,        ImVec4(0,0,0,0));
     ImGui::PushStyleColor(ImGuiCol_ButtonHovered, Theme::COL_CONTRAST_V4);
-    if (ImGui::Button(ICON_FA_HOUSE, ImVec2(BTN_W, 28))) {
+    if (ImGui::Button(ICON_FA_HOUSE, ImVec2(BTN_W, BH))) {
         m_state.activePage = AppPage::Settings;
         m_state.drawerOpen = false;
     }
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Settings");
     ImGui::PopStyleColor(2);
 
+    // Page title (centered)
     const char* pageTitle = "Sightline Visualizer";
     if (m_state.activePage == AppPage::Search)      pageTitle = "Search";
     if (m_state.activePage == AppPage::Settings)    pageTitle = "Settings";
@@ -424,13 +463,16 @@ void MainWindow::DrawTopBar(float w) {
     float leftEdge  = R_PAD + BTN_W + GAP;
     float rightEdge = w - BLOCK_W;
     float midZoneW  = rightEdge - leftEdge;
-    float titleW    = ImGui::CalcTextSize(pageTitle).x;
-    float titleX    = leftEdge + (midZoneW - titleW) * 0.5f;
-    if (titleX < leftEdge) titleX = leftEdge;
-    float textH = ImGui::GetTextLineHeight();
-    ImGui::SetCursorPos(ImVec2(titleX, (TOP_H - textH) * 0.5f));
-    ImGui::TextColored(Theme::COL_ACCENT_V4, "%s", pageTitle);
 
+    std::string truncTitle = Widgets::TruncateText(pageTitle, midZoneW - GAP * 2.f);
+    float titleW = ImGui::CalcTextSize(truncTitle.c_str()).x;
+    float titleX = leftEdge + (midZoneW - titleW) * 0.5f;
+    if (titleX < leftEdge) titleX = leftEdge;
+    float textH  = ImGui::GetTextLineHeight();
+    ImGui::SetCursorPos(ImVec2(titleX, (TOP_H - textH) * 0.5f));
+    ImGui::TextColored(Theme::COL_ACCENT_V4, "%s", truncTitle.c_str());
+
+    // Search field + button
     float blockX = w - BLOCK_W;
     ImGui::SetCursorPos(ImVec2(blockX, itemY));
     ImGui::PushStyleColor(ImGuiCol_FrameBg,        Theme::COL_CONTRAST_V4);
@@ -449,24 +491,32 @@ void MainWindow::DrawTopBar(float w) {
     ImGui::PopStyleColor(3);
 
     ImGui::SameLine(0, GAP);
+    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(10.0f, 6.0f));
     ImGui::PushStyleColor(ImGuiCol_Button,        Theme::COL_ACCENT_V4);
     ImGui::PushStyleColor(ImGuiCol_ButtonHovered, Theme::COL_ACCENT_HOV_V4);
     if (searching) ImGui::BeginDisabled();
-    if ((ImGui::Button(searching ? "..." : ICON_FA_MAGNIFYING_GLASS " Search", ImVec2(SBTN_W, 28)) || enter) && !searching)
+    // Search button: magnifying glass icon + label
+    const char* searchBtnLabel = searching
+        ? ICON_FA_MAGNIFYING_GLASS " ..."
+        : ICON_FA_MAGNIFYING_GLASS " Search";
+    if ((ImGui::Button(searchBtnLabel, ImVec2(SBTN_W + 16.f, BH)) || enter) && !searching)
         DoSearch();
     if (searching) ImGui::EndDisabled();
     ImGui::PopStyleColor(2);
+    ImGui::PopStyleVar();
 
     ImGui::End();
 }
 
+// Drawer icons: FA6 glyphs with ASCII fallback string built at compile time.
+// The fallback is never shown if fa-solid-900.ttf is present.
 static const char* kDrawerIcons[]  = {
-    ICON_FA_NEWSPAPER,
-    ICON_FA_FIRE,
-    ICON_FA_RSS,
-    ICON_FA_HEART,
-    ICON_FA_CLOCK_ROTATE_LEFT,
-    ICON_FA_DOWNLOAD
+    ICON_FA_WAND_MAGIC_SPARKLES,  // What's New
+    ICON_FA_FIRE,                 // Trending
+    ICON_FA_RSS,                  // Subscriptions
+    ICON_FA_HEART,                // Favourites
+    ICON_FA_CLOCK_ROTATE_LEFT,    // History
+    ICON_FA_DOWNLOAD,             // Downloads
 };
 static const char* kDrawerLabels[] = {
     "What's New","Trending","Subscriptions",
@@ -601,7 +651,7 @@ void MainWindow::DrawContent(float, float topH, float w, float h) {
                 ImGuiWindowFlags_NoMove      |
                 ImGuiWindowFlags_NoBringToFrontOnFocus);
             ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0,0,0,0));
-            if (ImGui::Button(ICON_FA_ARROW_LEFT "  Back")) m_state.activePage = AppPage::Main;
+            if (ImGui::Button(ICON_FA_CHEVRON_LEFT "  Back")) m_state.activePage = AppPage::Main;
             ImGui::PopStyleColor();
             ImGui::Separator();
             ImGui::Spacing();

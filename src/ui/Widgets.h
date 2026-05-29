@@ -19,14 +19,17 @@ inline bool DrawerItem(const char* icon, const char* label, bool selected) {
     ImGui::PushStyleColor(ImGuiCol_Button,        ImVec4(0,0,0,0));
     ImGui::PushStyleColor(ImGuiCol_ButtonHovered, Theme::COL_CONTRAST_V4);
     ImGui::PushStyleColor(ImGuiCol_ButtonActive,  Theme::COL_ACCENT_V4);
-    char buf[128]; snprintf(buf, sizeof(buf), "%s  %s", icon, label);
+    // Use a single space + label to avoid uneven icon-text gap
+    char buf[128]; snprintf(buf, sizeof(buf), "%s %s", icon, label);
     bool clicked = ImGui::Button(buf, ImVec2(w, h));
     ImGui::PopStyleColor(3);
     return clicked;
 }
 
-// Tab button with red underline indicator (NewPipe style)
+// Tab button with accent underline indicator (NewPipe style)
+// Height unified to 30px across all usages.
 inline bool TabButton(const char* label, bool active, float w) {
+    const float TAB_H = 30.0f;
     if (active) {
         ImGui::PushStyleColor(ImGuiCol_Button,        Theme::COL_ACCENT_V4);
         ImGui::PushStyleColor(ImGuiCol_ButtonHovered, Theme::COL_ACCENT_HOV_V4);
@@ -38,7 +41,7 @@ inline bool TabButton(const char* label, bool active, float w) {
         ImGui::PushStyleColor(ImGuiCol_ButtonActive,  Theme::COL_CONTRAST_V4);
         ImGui::PushStyleColor(ImGuiCol_Text,          Theme::COL_TEXT_DIM_V4);
     }
-    bool clicked = ImGui::Button(label, ImVec2(w, 32.0f));
+    bool clicked = ImGui::Button(label, ImVec2(w, TAB_H));
     ImGui::PopStyleColor(4);
     if (active) {
         ImVec2 p  = ImGui::GetItemRectMin();
@@ -60,10 +63,7 @@ inline void ComingSoon(const char* label) {
 }
 
 // Returns a copy of `text` truncated with "..." so it fits within `maxWidth`
-// pixels using ImGui's default font. If it already fits, returns `text` as-is.
-// Binary-search walks UTF-8 multibyte character boundaries so that substr(0, lo)
-// never splits a multi-byte sequence (tildes, ñ, CJK, etc.), which would produce
-// a corrupted suffix that measures wider than intended and overflows the card grid.
+// pixels. Binary-search walks UTF-8 multibyte character boundaries.
 static inline std::string TruncateText(const char* text, float maxWidth) {
     if (!text || maxWidth <= 0.0f) return text ? text : "";
     ImVec2 full = ImGui::CalcTextSize(text);
@@ -72,8 +72,6 @@ static inline std::string TruncateText(const char* text, float maxWidth) {
     const float budget    = maxWidth - ellipsisW;
     if (budget <= 0.0f) return "...";
     std::string s(text);
-    // Collect byte-offsets of each UTF-8 character start so the binary
-    // search always cuts on a valid codepoint boundary.
     std::vector<int> charStarts;
     charStarts.reserve(s.size());
     for (int i = 0; i < (int)s.size(); ) {
@@ -85,11 +83,10 @@ static inline std::string TruncateText(const char* text, float maxWidth) {
         else                i += 4;
     }
     if (charStarts.empty()) return "...";
-    // Binary search over character indices; convert to byte offset via charStarts.
     int lo = 0, hi = (int)charStarts.size();
     while (lo < hi) {
         int mid = (lo + hi + 1) / 2;
-        int byteOff = charStarts[mid]; // byte offset of the (mid)-th character
+        int byteOff = charStarts[mid];
         if (ImGui::CalcTextSize(s.c_str(), s.c_str() + byteOff).x <= budget)
             lo = mid;
         else
@@ -101,13 +98,8 @@ static inline std::string TruncateText(const char* text, float maxWidth) {
 
 // -----------------------------------------------------------------------
 // NewPipe-style video card with async thumbnail
-// Layout:
-//  +--------------------------------------------------+
-//  | [THUMB 160x90]              Title (white)        |
-//  |   [dur badge]               Canal  *  vistas      |
-//  +--------------------------------------------------+
-// videoId is used to look up the thumbnail from ThumbnailCache::s_instance.
-// Returns true when clicked.
+// 3-level text hierarchy: title (COL_TEXT) > channel (COL_TEXT_DIM_V4) > meta (COL_TEXT_FAINT)
+// -----------------------------------------------------------------------
 inline bool VideoCard(int id,
                       const char* title,
                       const char* channel,
@@ -123,7 +115,6 @@ inline bool VideoCard(int id,
     ImGui::PushID(id);
     float cardW = ImGui::GetContentRegionAvail().x;
 
-    // Card background
     ImVec2 cardPos = ImGui::GetCursorScreenPos();
     ImU32 bgCol = selected
         ? ImGui::ColorConvertFloat4ToU32(Theme::COL_SELECTED)
@@ -131,39 +122,29 @@ inline bool VideoCard(int id,
     ImGui::GetWindowDrawList()->AddRectFilled(
         cardPos, ImVec2(cardPos.x + cardW, cardPos.y + CARD_H), bgCol, 4.0f);
 
-    // Invisible clickable area over the whole card
     bool clicked = ImGui::InvisibleButton("##card", ImVec2(cardW, CARD_H));
     if (ImGui::IsItemHovered() && !selected)
         ImGui::GetWindowDrawList()->AddRectFilled(
             cardPos, ImVec2(cardPos.x + cardW, cardPos.y + CARD_H),
             IM_COL32(255,255,255,10), 4.0f);
 
-    // Thumbnail area
     ImVec2 tMin = ImVec2(cardPos.x + PAD, cardPos.y + PAD);
     ImVec2 tMax = ImVec2(tMin.x + THUMB_W, tMin.y + THUMB_H);
 
-    // Try to get texture from cache
     IDirect3DTexture9* thumbTex = nullptr;
     if (videoId && videoId[0] && ThumbnailCache::s_instance)
         thumbTex = ThumbnailCache::s_instance->Get(videoId);
 
     if (thumbTex) {
-        // Draw the actual thumbnail
         ImGui::GetWindowDrawList()->AddImage(
             (ImTextureID)(uintptr_t)thumbTex,
-            tMin, tMax,
-            ImVec2(0,0), ImVec2(1,1),
-            IM_COL32(255,255,255,255));
-        // Rounded overlay to clip corners
+            tMin, tMax, ImVec2(0,0), ImVec2(1,1), IM_COL32(255,255,255,255));
         ImGui::GetWindowDrawList()->AddRect(
             tMin, tMax,
-            ImGui::ColorConvertFloat4ToU32(Theme::COL_CARD),
-            3.0f, 0, 2.0f);
+            ImGui::ColorConvertFloat4ToU32(Theme::COL_CARD), 3.0f, 0, 2.0f);
     } else {
-        // Placeholder: dark rect + loading dots while downloading
         ImGui::GetWindowDrawList()->AddRectFilled(
             tMin, tMax, IM_COL32(30,30,30,255), 3.0f);
-
         if (videoId && videoId[0]) {
             int t = (int)(ImGui::GetTime() * 3.0) % 3;
             const char* dots[] = { ".  ", ".. ", "..." };
@@ -174,22 +155,19 @@ inline bool VideoCard(int id,
                        tMin.y + (THUMB_H - dsz.y) * 0.5f),
                 IM_COL32(120,120,120,255), dots[t]);
         } else {
-            // Static play triangle
             ImVec2 ip = ImVec2(tMin.x + THUMB_W*0.5f - 7, tMin.y + THUMB_H*0.5f - 8);
             ImGui::GetWindowDrawList()->AddTriangleFilled(
-                ip,
-                ImVec2(ip.x, ip.y + 16),
-                ImVec2(ip.x + 13, ip.y + 8),
+                ip, ImVec2(ip.x, ip.y + 16), ImVec2(ip.x + 13, ip.y + 8),
                 IM_COL32(255,255,255,80));
         }
     }
 
-    // Duration badge (red, bottom-right of thumb)
+    // Duration badge — teal accent, bottom-right of thumb
     if (duration && duration[0]) {
-        ImVec2 dsz    = ImGui::CalcTextSize(duration);
-        float  bw     = dsz.x + 8, bh = dsz.y + 4;
-        ImVec2 bMin   = ImVec2(tMax.x - bw - 4, tMax.y - bh - 4);
-        ImVec2 bMax   = ImVec2(tMax.x - 4, tMax.y - 4);
+        ImVec2 dsz  = ImGui::CalcTextSize(duration);
+        float  bw   = dsz.x + 8, bh = dsz.y + 4;
+        ImVec2 bMin = ImVec2(tMax.x - bw - 4, tMax.y - bh - 4);
+        ImVec2 bMax = ImVec2(tMax.x - 4, tMax.y - 4);
         ImGui::GetWindowDrawList()->AddRectFilled(
             bMin, bMax,
             ImGui::ColorConvertFloat4ToU32(Theme::COL_ACCENT_V4), 3.0f);
@@ -198,33 +176,40 @@ inline bool VideoCard(int id,
             ImVec2(bMin.x + 4, bMin.y + 2), IM_COL32(255,255,255,255), duration);
     }
 
-    // Text area — right of thumbnail, clipped to card edge.
-    // FIX: use AddText(font, size, ...) overload so the font used for
-    // rendering always matches the one used by CalcTextSize / TruncateText,
-    // preventing text from spilling outside the card grid on window resize.
+    // Text area: 3-level hierarchy
+    //   title   -> COL_TEXT         (primary)
+    //   channel -> COL_TEXT_DIM_V4  (secondary)
+    //   meta    -> COL_TEXT_FAINT   (tertiary)
     ImFont* font     = ImGui::GetFont();
     float   fontSize = ImGui::GetFontSize();
+    float lineH = ImGui::GetTextLineHeight();
     float tx      = tMax.x + PAD;
     float ty      = cardPos.y + PAD;
-    float maxTxtW = cardPos.x + cardW - tx - PAD;  // remaining width minus right padding
+    float maxTxtW = cardPos.x + cardW - tx - PAD;
 
-    std::string titleStr = TruncateText(title, maxTxtW);
+    std::string titleStr   = TruncateText(title,   maxTxtW);
+    std::string channelStr = TruncateText(channel, maxTxtW);
 
-    char metaBuf[512];
-    snprintf(metaBuf, sizeof(metaBuf), "%s  *  %s", channel, views);
+    char metaBuf[256];
+    snprintf(metaBuf, sizeof(metaBuf), "%s", views ? views : "");
     std::string metaStr = TruncateText(metaBuf, maxTxtW);
 
+    // Row 1: title (primary)
     ImGui::GetWindowDrawList()->AddText(
-        font, fontSize,
-        ImVec2(tx, ty),
+        font, fontSize, ImVec2(tx, ty),
         ImGui::ColorConvertFloat4ToU32(Theme::COL_TEXT), titleStr.c_str());
+    // Row 2: channel (secondary)
     ImGui::GetWindowDrawList()->AddText(
-        font, fontSize,
-        ImVec2(tx, ty + ImGui::GetTextLineHeight() * 2.2f),
-        ImGui::ColorConvertFloat4ToU32(Theme::COL_TEXT_DIM_V4), metaStr.c_str());
+        font, fontSize, ImVec2(tx, ty + lineH * 1.4f),
+        ImGui::ColorConvertFloat4ToU32(Theme::COL_TEXT_DIM_V4), channelStr.c_str());
+    // Row 3: views / meta (tertiary)
+    ImGui::GetWindowDrawList()->AddText(
+        font, fontSize, ImVec2(tx, ty + lineH * 2.8f),
+        ImGui::ColorConvertFloat4ToU32(Theme::COL_TEXT_FAINT), metaStr.c_str());
 
     ImGui::SetCursorScreenPos(ImVec2(cardPos.x, cardPos.y + CARD_H));
-    ImGui::Dummy(ImVec2(cardW, 6.0f));
+    // Tighter inter-card gap (4px instead of 6px)
+    ImGui::Dummy(ImVec2(cardW, 4.0f));
 
     ImGui::PopID();
     return clicked;
