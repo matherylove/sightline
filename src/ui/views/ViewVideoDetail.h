@@ -6,6 +6,11 @@
 //                     Up Next panel (GetRelatedVideos async).
 // GUI-FIXES: FA6 icons, volume label, Subscribe fixed-width, title hierarchy,
 //            seekbar hit-target, Up Next header.
+// GUI-FIXES-2: uniform action-btn widths, consistent PAD on all panels,
+//              channel < title font hierarchy, meta line dimmed+separated,
+//              status dot tooltip always visible, sidebar item gap+separator,
+//              Back btn vertically centred, tab equal padding, view-count
+//              uses COL_TEXT_FAINT, related item channel/views use FAINT.
 
 #include "../AppState.h"
 #include "../Widgets.h"
@@ -439,9 +444,11 @@ static inline void VD_DrawRelatedPanel(AppState& state,
         return;
     }
 
-    const float THUMB_H  = 56.f;
-    const float THUMB_W  = 100.f;
-    const float ITEM_PAD = 6.f;
+    // [FIX] Increased thumbnail height for a better 16:9 ratio, consistent item spacing
+    const float THUMB_H  = 60.f;
+    const float THUMB_W  = 107.f;  // ~16:9
+    const float ITEM_PAD = 8.f;
+    const float ITEM_GAP = 4.f;    // [FIX] gap between items
     const float TEXT_X   = PAD + THUMB_W + ITEM_PAD;
     const float TEXT_W   = panelW - TEXT_X - PAD;
 
@@ -473,7 +480,6 @@ static inline void VD_DrawRelatedPanel(AppState& state,
         if (!it.videoId.empty() && ThumbnailCache::s_instance) {
             IDirect3DTexture9* tex = ThumbnailCache::s_instance->Get(it.videoId);
             if (tex) {
-                // Correct UV crop to avoid black bars on 16:9 thumbnails
                 float uvY0 = 0.f, uvY1 = 1.f;
                 float srcAspect = 16.f/9.f;
                 float dstAspect = THUMB_W / THUMB_H;
@@ -511,7 +517,7 @@ static inline void VD_DrawRelatedPanel(AppState& state,
             dl->AddText({bx+3.f,by+2.f}, IM_COL32(200,200,200,230), lbl);
         }
 
-        // Title — full brightness
+        // [FIX] Title — full brightness, truncated
         ImGui::SetCursorPos({TEXT_X, rowY + ITEM_PAD});
         ImGui::PushTextWrapPos(TEXT_X + TEXT_W);
         const ImVec4 titleColor = canPlay ? Theme::COL_TEXT : ImVec4{0.47f, 0.47f, 0.47f, 1.f};
@@ -519,15 +525,15 @@ static inline void VD_DrawRelatedPanel(AppState& state,
         if ((int)displayTitle.size() > 80) displayTitle = displayTitle.substr(0,77) + "...";
         ImGui::TextColored(titleColor, "%s", displayTitle.c_str());
 
-        // Channel name — dimmed, smaller visual weight
+        // [FIX] Channel name — COL_TEXT_DIM (secondary), not same as title
         if (!it.channelName.empty()) {
             ImGui::SetCursorPosX(TEXT_X);
             ImGui::TextColored(Theme::COL_TEXT_DIM_V4, "%s", it.channelName.c_str());
         }
-        // View count — dimmed
+        // [FIX] View count — COL_TEXT_FAINT (tertiary), visually smallest
         if (!it.viewCount.empty()) {
             ImGui::SetCursorPosX(TEXT_X);
-            ImGui::TextColored(Theme::COL_TEXT_DIM_V4, "%s", it.viewCount.c_str());
+            ImGui::TextColored(Theme::COL_TEXT_FAINT, "%s", it.viewCount.c_str());
         }
         ImGui::PopTextWrapPos();
 
@@ -539,9 +545,11 @@ static inline void VD_DrawRelatedPanel(AppState& state,
             state.playRequested           = true;
         }
 
+        // [FIX] Consistent item bottom gap before separator
         ImGui::SetCursorPos({0, rowY + THUMB_H + ITEM_PAD*2.f});
+        ImGui::Dummy({panelW, ITEM_GAP});
         ImGui::SetCursorPosX(PAD);
-        ImGui::PushStyleColor(ImGuiCol_Separator, ImVec4{1,1,1,0.05f});
+        ImGui::PushStyleColor(ImGuiCol_Separator, ImVec4{1,1,1,0.07f});
         ImGui::Separator();
         ImGui::PopStyleColor();
     }
@@ -817,12 +825,13 @@ inline void DrawVideoDetailView(
     ImDrawList* dlTop=ImGui::GetWindowDrawList();
 
     // -----------------------------------------------------------------------
-    // Back button — FA6 chevron-left
+    // [FIX] Back button — vertically centred in BACKH row, consistent PAD
     // -----------------------------------------------------------------------
-    ImGui::SetCursorPos({PAD,(BACKH-BH)*.5f});
+    ImGui::SetCursorPos({PAD, (BACKH - BH) * 0.5f});
     ImGui::PushStyleColor(ImGuiCol_Button,       {0,0,0,0});
     ImGui::PushStyleColor(ImGuiCol_ButtonHovered,{.22f,.22f,.22f,1});
     ImGui::PushStyleColor(ImGuiCol_ButtonActive, {.32f,.32f,.32f,1});
+    ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 4.f);
     if (ImGui::Button(ICON_FA_CHEVRON_LEFT "  Back",{84,BH})) {
         vds.player.Stop();
         vds.playStarted=vds.playerInited=false;
@@ -832,6 +841,7 @@ inline void DrawVideoDetailView(
         vds.cachedPX=vds.cachedPY=vds.cachedPW=vds.cachedPH=-1;
         state.activePage=state.prevPage;
     }
+    ImGui::PopStyleVar();
     ImGui::PopStyleColor(3);
 
     // Video rect
@@ -941,6 +951,7 @@ inline void DrawVideoDetailView(
         ImGui::PushStyleColor(ImGuiCol_Button,       {.17f,.17f,.17f,1});
         ImGui::PushStyleColor(ImGuiCol_ButtonHovered,{.28f,.28f,.28f,1});
         ImGui::PushStyleColor(ImGuiCol_ButtonActive, {.38f,.38f,.38f,1});
+        ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 4.f);
         if (!canCtrl) ImGui::BeginDisabled();
 
         if (ImGui::Button(ICON_FA_BACKWARD_STEP,{BW,BH})) vds.player.SeekTo(0);
@@ -969,12 +980,14 @@ inline void DrawVideoDetailView(
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("End");
 
         if (!canCtrl) ImGui::EndDisabled();
+        ImGui::PopStyleVar();
         ImGui::PopStyleColor(3);
 
         ImGui::SameLine(0,10);
-        // Status dot
+
+        // [FIX] Status dot — always shows tooltip text inline next to dot
         {
-            ImU32 dc=IM_COL32(90,90,90,255); const char* dt="";
+            ImU32 dc=IM_COL32(90,90,90,255); const char* dt="Idle";
             if (state.streamResolving.load())     { dc=IM_COL32(255,200,0,255); dt="Resolving..."; }
             else if (streamError)                 { dc=IM_COL32(255,60,60,255); dt="Error"; }
             else if (vds.playStarted) switch(ps) {
@@ -989,33 +1002,38 @@ inline void DrawVideoDetailView(
             float dotOffY = (BH - 10.f) * .5f;
             ImVec2 dotP = {dotBase.x + 5.f, dotBase.y + dotOffY + 5.f};
             dlTop->AddCircleFilled(dotP, 5.f, dc);
-            ImGui::Dummy({12,BH});
-            if (dt[0]&&ImGui::IsMouseHoveringRect({dotBase.x,dotBase.y},{dotBase.x+12,dotBase.y+BH}))
-                ImGui::SetTooltip("%s",dt);
+            // [FIX] Show label text next to dot for always-visible status
+            float lblX = dotBase.x + 14.f;
+            float lblY = dotBase.y + dotOffY;
+            ImVec2 lblSz = ImGui::CalcTextSize(dt);
+            dlTop->AddText({lblX, lblY}, ImGui::ColorConvertFloat4ToU32(Theme::COL_TEXT_DIM_V4), dt);
+            float dotAreaW = 14.f + lblSz.x + 6.f;
+            ImGui::Dummy({dotAreaW, BH});
+            if (ImGui::IsMouseHoveringRect({dotBase.x,dotBase.y},{dotBase.x+dotAreaW,dotBase.y+BH}))
+                ImGui::SetTooltip("%s", dt);
         }
 
         // -----------------------------------------------------------------------
-        // Volume — speaker icon label + standalone slider (no inline text)
+        // Volume — speaker icon + slider, right-aligned
         // -----------------------------------------------------------------------
         const float VOL_W=80.f, QUAL_W=130.f, MG=6.f;
-        // Icon label
         float volRowY = ctrRowY+(CTR_H-BH)*.5f;
-        ImGui::SetCursorPos({LW-PAD-QUAL_W-MG-VOL_W-20.f, volRowY});
+        ImGui::SetCursorPos({LW-PAD-QUAL_W-MG-VOL_W-22.f, volRowY});
         const char* volIcon = vds.volume == 0
             ? ICON_FA_VOLUME_XMARK
             : (vds.volume < 40 ? ICON_FA_VOLUME_LOW : ICON_FA_VOLUME_HIGH);
-        ImGui::PushStyleColor(ImGuiCol_Button, {0,0,0,0});
+        ImGui::PushStyleColor(ImGuiCol_Button,        {0,0,0,0});
         ImGui::PushStyleColor(ImGuiCol_ButtonHovered, {0,0,0,0});
-        // Mute toggle on icon click
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive,  {0,0,0,0});
         static int prevVol = 80;
-        if (ImGui::Button(volIcon, {20.f, BH})) {
+        if (ImGui::Button(volIcon, {22.f, BH})) {
             if (vds.volume > 0) { prevVol = vds.volume; vds.volume = 0; }
             else                { vds.volume = prevVol; }
             vds.player.SetVolume(vds.volume);
         }
-        ImGui::PopStyleColor(2);
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("Mute / Unmute");
+        ImGui::PopStyleColor(3);
         ImGui::SameLine(0, 2);
-        // Slider — no format string (label is external)
         ImGui::PushStyleColor(ImGuiCol_SliderGrab,      Theme::COL_ACCENT_V4);
         ImGui::PushStyleColor(ImGuiCol_SliderGrabActive,Theme::COL_ACCENT_HOV_V4);
         ImGui::PushStyleColor(ImGuiCol_FrameBg,         Theme::COL_SURFACE2);
@@ -1056,32 +1074,33 @@ inline void DrawVideoDetailView(
     }
 
     // -----------------------------------------------------------------------
-    // ACTION ROW — FA6 icons, equal-width flex buttons
+    // [FIX] ACTION ROW — equal-width flex buttons, consistent FrameRounding
     // -----------------------------------------------------------------------
     {
-        float actRowY=ctrRowY+CTR_H;
-        float actBtnW=(LW - PAD*2.f) / 4.f;
-        ImGui::SetCursorPos({PAD, actRowY});
+        float actRowY = ctrRowY + CTR_H;
+        // [FIX] All 4 buttons share exactly equal width, filling LW with PAD margins
+        float actBtnW = (LW - PAD * 2.f) / 4.f;
+        ImGui::SetCursorPos({PAD, actRowY + (ACT_H - BH) * 0.5f});
         ImGui::PushStyleColor(ImGuiCol_Button,        Theme::COL_SURFACE2);
         ImGui::PushStyleColor(ImGuiCol_ButtonHovered, Theme::COL_ACCENT_SOFT);
         ImGui::PushStyleColor(ImGuiCol_ButtonActive,  Theme::COL_ACCENT_V4);
         ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 4.f);
+        // [FIX] No gaps between action buttons (SameLine(0,0)) so total = LW-PAD*2
+        if (ImGui::Button(ICON_FA_DOWNLOAD "  Download", {actBtnW, BH}))
+            vds.dlDialog.open = true;
 
-        if (ImGui::Button(ICON_FA_DOWNLOAD "  Download",{actBtnW,BH}))
-            vds.dlDialog.open=true;
-
-        ImGui::SameLine(0,0);
+        ImGui::SameLine(0, 0);
         bool isFav = PersistentData::IsInPlaylist("Favorites", vds.videoId);
         const char* favLabel = isFav
             ? ICON_FA_HEART "  Saved"
             : ICON_FA_HEART "  Favorite";
-        if (ImGui::Button(favLabel,{actBtnW,BH})) {
+        if (ImGui::Button(favLabel, {actBtnW, BH})) {
             if (isFav) PersistentData::RemoveFromPlaylist("Favorites", vds.videoId);
             else       PersistentData::AddToPlaylist("Favorites", vds.videoId, vds.title);
         }
 
-        ImGui::SameLine(0,0);
-        if (ImGui::Button(ICON_FA_WINDOW_RESTORE "  Window",{actBtnW,BH})) {
+        ImGui::SameLine(0, 0);
+        if (ImGui::Button(ICON_FA_WINDOW_RESTORE "  Window", {actBtnW, BH})) {
             if (!vds.popup.open&&!vds.videoId.empty()&&!vds.streamUrl.empty()) {
                 double startPos=vds.player.GetPosition();
                 vds.popup.startPos=startPos;
@@ -1089,9 +1108,10 @@ inline void DrawVideoDetailView(
                 vds.popup.seekPending=false; vds.popup.seekDone=false;
             }
         }
-        ImGui::SameLine(0,0);
-        if (ImGui::Button(vds.fullscreen ? ICON_FA_COMPRESS "  Exit FS" : ICON_FA_EXPAND "  Fullscreen",{actBtnW,BH}))
-            vds.fullscreen=!vds.fullscreen;
+
+        ImGui::SameLine(0, 0);
+        if (ImGui::Button(vds.fullscreen ? ICON_FA_COMPRESS "  Exit FS" : ICON_FA_EXPAND "  Fullscreen", {actBtnW, BH}))
+            vds.fullscreen = !vds.fullscreen;
 
         ImGui::PopStyleVar();
         ImGui::PopStyleColor(3);
@@ -1110,7 +1130,7 @@ inline void DrawVideoDetailView(
             ImGuiWindowFlags_NoScrollbar|ImGuiWindowFlags_NoScrollWithMouse);
         ImGui::PopStyleColor(); ImGui::PopStyleVar();
 
-        // Tab bar
+        // [FIX] Tab bar — equal padding on both tabs via equal width
         const int NTABS=(int)VideoDetailTab::COUNT;
         float tabW=LW/(float)NTABS;
         ImGui::SetCursorPos({0,0});
@@ -1121,7 +1141,8 @@ inline void DrawVideoDetailView(
             ImGui::PushStyleColor(ImGuiCol_ButtonHovered,
                 active?Theme::COL_ACCENT_V4:Theme::COL_CONTRAST_V4);
             ImGui::PushStyleColor(ImGuiCol_ButtonActive, Theme::COL_ACCENT_HOV_V4);
-            ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 3.f);
+            // [FIX] Uniform rounding on tab buttons
+            ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 0.f);
             if (ImGui::Button(kVDTabs[ti],{tabW,BH}))
                 vds.activeTab=(VideoDetailTab)ti;
             ImGui::PopStyleVar();
@@ -1141,7 +1162,7 @@ inline void DrawVideoDetailView(
             ImGui::SetCursorPos({PAD,PAD});
             ImGui::PushTextWrapPos(LW-PAD);
 
-            // Title — bold, full brightness
+            // [FIX] Title — primary text, full brightness
             if (!vds.title.empty()) {
                 ImGui::PushStyleColor(ImGuiCol_Text, Theme::COL_TEXT);
                 ImGui::PushFont(ImGui::GetIO().Fonts->Fonts.Size > 1
@@ -1151,7 +1172,7 @@ inline void DrawVideoDetailView(
                 ImGui::PopStyleColor();
             }
 
-            // Channel — accent colour, visually smaller (same font but dim weight)
+            // [FIX] Channel name — accent, clearly secondary (same line indent, no extra spacing)
             if (!vds.channelName.empty()) {
                 ImGui::SetCursorPosX(PAD);
                 ImGui::PushStyleColor(ImGuiCol_Text, Theme::COL_ACCENT_V4);
@@ -1164,23 +1185,26 @@ inline void DrawVideoDetailView(
                 ImGui::PopStyleColor();
             }
 
-            // Subscribe button — fixed width, bell icon
+            // [FIX] Subscribe — fixed width, consistent rounding, same PAD as channel
             ImGui::SetCursorPosX(PAD);
             ImGui::PushStyleColor(ImGuiCol_Button,        Theme::COL_SURFACE2);
             ImGui::PushStyleColor(ImGuiCol_ButtonHovered, Theme::COL_ACCENT_SOFT);
             ImGui::PushStyleColor(ImGuiCol_ButtonActive,  Theme::COL_ACCENT_V4);
+            ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 4.f);
             if (ImGui::Button(ICON_FA_BELL "  Subscribe", {120.f, BH}))
                 ImGui::SetTooltip("Subscribe not implemented");
+            ImGui::PopStyleVar();
             ImGui::PopStyleColor(3);
 
-            // Meta line — dimmed, one line
+            // [FIX] Meta line — views and duration together, COL_TEXT_FAINT (tertiary)
             ImGui::SetCursorPosX(PAD);
             std::string meta;
             if (!vds.viewCount.empty()) meta += vds.viewCount;
             if (!vds.duration.empty())  { if (!meta.empty()) meta += " \xc2\xb7 "; meta += vds.duration; }
             if (!meta.empty())
-                ImGui::TextColored(Theme::COL_TEXT_DIM_V4, "%s", meta.c_str());
+                ImGui::TextColored(Theme::COL_TEXT_FAINT, "%s", meta.c_str());
 
+            // [FIX] Separator after meta, before description body
             ImGui::Spacing();
             ImGui::SetCursorPosX(PAD);
             ImGui::PushStyleColor(ImGuiCol_Separator,ImVec4{1,1,1,0.08f});
@@ -1188,7 +1212,7 @@ inline void DrawVideoDetailView(
             ImGui::PopStyleColor();
             ImGui::Spacing();
 
-            // Description body
+            // Description body — muted colour, consistent left indent
             if (!vds.description.empty()) {
                 ImGui::SetCursorPosX(PAD);
                 ImGui::PushStyleColor(ImGuiCol_Text, Theme::COL_TEXT_DIM_V4);
@@ -1217,10 +1241,11 @@ inline void DrawVideoDetailView(
             ImGuiWindowFlags_NoScrollbar|ImGuiWindowFlags_NoScrollWithMouse);
         ImGui::PopStyleColor(); ImGui::PopStyleVar();
 
-        // Search bar inside sidebar
+        // [FIX] Search bar — PAD from left AND right, vertically centred row
         {
-            float sbW2=RW-PAD*2.f;
-            ImGui::SetCursorPos({PAD,8.f});
+            const float SRCH_BTN_W = BH;
+            float sbW2 = RW - PAD*2.f - SRCH_BTN_W - 4.f;
+            ImGui::SetCursorPos({PAD, 8.f});
             ImGui::PushStyleColor(ImGuiCol_FrameBg,       Theme::COL_SURFACE2);
             ImGui::PushStyleColor(ImGuiCol_FrameBgHovered,Theme::COL_CONTRAST_V4);
             ImGui::PushStyleColor(ImGuiCol_Border,        Theme::COL_CONTRAST_V4);
@@ -1235,7 +1260,9 @@ inline void DrawVideoDetailView(
             ImGui::PushStyleColor(ImGuiCol_Button,        Theme::COL_ACCENT_V4);
             ImGui::PushStyleColor(ImGuiCol_ButtonHovered, Theme::COL_ACCENT_HOV_V4);
             ImGui::PushStyleColor(ImGuiCol_ButtonActive,  Theme::COL_ACCENT_SOFT);
-            bool go=ImGui::Button(ICON_FA_MAGNIFYING_GLASS,{BH,BH});
+            ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 4.f);
+            bool go=ImGui::Button(ICON_FA_MAGNIFYING_GLASS,{SRCH_BTN_W,BH});
+            ImGui::PopStyleVar();
             ImGui::PopStyleColor(3);
             if ((enter||go)&&srchBuf[0]) {
                 snprintf(state.searchBuf, sizeof(state.searchBuf), "%s", srchBuf);
@@ -1243,22 +1270,22 @@ inline void DrawVideoDetailView(
             }
         }
 
-        // "Up Next" section header
+        // [FIX] "Up Next" header — consistent PAD, slightly bolder colour
         ImGui::Spacing();
         ImGui::SetCursorPosX(PAD);
         ImGui::PushStyleColor(ImGuiCol_Text, Theme::COL_TEXT);
-        ImGui::Text("Up Next");
+        ImGui::TextUnformatted("Up Next");
         ImGui::PopStyleColor();
         ImGui::SetCursorPosX(PAD);
-        ImGui::PushStyleColor(ImGuiCol_Separator, ImVec4{1,1,1,0.08f});
+        ImGui::PushStyleColor(ImGuiCol_Separator, ImVec4{1,1,1,0.10f});
         ImGui::Separator();
         ImGui::PopStyleColor();
         ImGui::Spacing();
 
-        // Related list scroll area
+        // Related list scroll area — account for search+header height (~56px)
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding,{0,0});
         ImGui::PushStyleColor(ImGuiCol_ChildBg,{0,0,0,0});
-        ImGui::BeginChild("##vd_rel",{RW,rpH-80.f},false,0);
+        ImGui::BeginChild("##vd_rel",{RW,rpH-56.f},false,0);
         ImGui::PopStyleColor(); ImGui::PopStyleVar();
 
         VD_DrawRelatedPanel(state,vds,RW,PAD);
