@@ -8,6 +8,7 @@
 #include "imgui.h"
 #include "imgui_impl_win32.h"
 #include "imgui_impl_dx9.h"
+#include <IconsFontAwesome6.h>
 
 #include <wchar.h>
 #include <string>
@@ -126,6 +127,8 @@ void MainWindow::ResetD3D() {
 
 static void LoadUIFont() {
     ImGuiIO& io = ImGui::GetIO();
+
+    // Base glyph ranges: Latin + Latin Extended + General Punctuation + Arrows
     static const ImWchar kRanges[] = {
         0x0020, 0x017E,
         0x2000, 0x206F,
@@ -138,21 +141,55 @@ static void LoadUIFont() {
         "C:/Windows/Fonts/arial.ttf",
         nullptr
     };
+
     ImFontConfig cfg;
     cfg.OversampleH = 2;
     cfg.OversampleV = 1;
     cfg.PixelSnapH  = true;
+
+    bool baseLoaded = false;
     for (int i = 0; kCandidates[i]; i++) {
         DWORD attr = GetFileAttributesA(kCandidates[i]);
         if (attr == INVALID_FILE_ATTRIBUTES || (attr & FILE_ATTRIBUTE_DIRECTORY))
             continue;
         ImFont* f = io.Fonts->AddFontFromFileTTF(kCandidates[i], 14.0f, &cfg, kRanges);
         if (f) {
-            CTLogger::LogC('I', "[Font] Loaded: %s", kCandidates[i]);
-            return;
+            CTLogger::LogC('I', "[Font] Loaded base font: %s", kCandidates[i]);
+            baseLoaded = true;
+            break;
         }
     }
-    CTLogger::LogC('W', "[Font] No TTF found, using ProggyClean default.");
+    if (!baseLoaded) {
+        io.Fonts->AddFontDefault();
+        CTLogger::LogC('W', "[Font] No TTF found, using ProggyClean default.");
+    }
+
+    // Merge Font Awesome 6 Solid into the base font
+    // fa-solid-900.ttf must live next to ClientTube.exe in assets/
+    const char* kFAPaths[] = {
+        "assets/fa-solid-900.ttf",
+        "../assets/fa-solid-900.ttf",
+        nullptr
+    };
+    static const ImWchar kIconRanges[] = { ICON_MIN_FA, ICON_MAX_16_FA, 0 };
+    ImFontConfig icfg;
+    icfg.MergeMode        = true;
+    icfg.PixelSnapH       = true;
+    icfg.GlyphMinAdvanceX = 14.0f;  // keep icons monospaced with the text
+    bool iconLoaded = false;
+    for (int i = 0; kFAPaths[i]; i++) {
+        DWORD attr = GetFileAttributesA(kFAPaths[i]);
+        if (attr == INVALID_FILE_ATTRIBUTES || (attr & FILE_ATTRIBUTE_DIRECTORY))
+            continue;
+        ImFont* fi = io.Fonts->AddFontFromFileTTF(kFAPaths[i], 14.0f, &icfg, kIconRanges);
+        if (fi) {
+            CTLogger::LogC('I', "[Font] Merged Font Awesome 6: %s", kFAPaths[i]);
+            iconLoaded = true;
+            break;
+        }
+    }
+    if (!iconLoaded)
+        CTLogger::LogC('W', "[Font] fa-solid-900.ttf not found — icons will show as rectangles.");
 }
 
 void MainWindow::ApplyTheme() {
@@ -279,20 +316,12 @@ DWORD WINAPI MainWindow::StreamResolveProc(LPVOID param) {
     std::string url = InnerTube::GetStreamUrl(videoId);
     CTLogger::LogC('I', "[StreamResolve] result (first 120): %.120s", url.c_str());
 
-    // FIX Bug 1: stamp videoId alongside videoUrl so the guard
-    // `pendingPlay.videoId == vds.videoId` in ViewVideoDetail can pass.
-    // Without this the stream URL was written but never absorbed because
-    // pendingPlay.videoId was cleared on the previous playRequested cycle.
     self->m_state.pendingPlay.videoId  = videoId;
     self->m_state.pendingPlay.videoUrl = url;
     self->m_state.streamResolving.store(false);
     return 0;
 }
 
-// ---------------------------------------------------------------------------
-// VP9ResolveProc  -  fetches the VP9 quality list on a background thread.
-// Writes into pendingPlay only if the videoId hasn't changed while we ran.
-// ---------------------------------------------------------------------------
 DWORD WINAPI MainWindow::VP9ResolveProc(LPVOID param) {
     VP9Task* task = (VP9Task*)param;
     MainWindow* self    = task->self;
@@ -303,7 +332,6 @@ DWORD WINAPI MainWindow::VP9ResolveProc(LPVOID param) {
     std::vector<VP9Quality> qualities = InnerTube::GetVP9Qualities(videoId);
     CTLogger::LogC('I', "[VP9Resolve] got %d VP9 qualities", (int)qualities.size());
 
-    // Only commit if this is still the active video request
     if (self->m_state.pendingPlay.videoId == videoId) {
         self->m_state.pendingPlay.vp9Qualities        = qualities;
         self->m_state.pendingPlay.vp9QualitiesReady   = true;
@@ -315,7 +343,6 @@ DWORD WINAPI MainWindow::VP9ResolveProc(LPVOID param) {
 void MainWindow::DoResolveStream(const std::string& videoId) {
     if (m_state.streamResolving.load()) return;
 
-    // Reset VP9 state for the new video
     m_state.pendingPlay.vp9Qualities.clear();
     m_state.pendingPlay.vp9QualitiesReady   = false;
     m_state.pendingPlay.vp9QualitiesLoading = true;
@@ -327,7 +354,6 @@ void MainWindow::DoResolveStream(const std::string& videoId) {
     m_state.streamResolving.store(true);
     CTLogger::LogC('I', "[MainWindow] launching StreamResolveProc + VP9ResolveProc for %s", videoId.c_str());
 
-    // Thread 1: main stream URL
     StreamTask* st = new StreamTask{ this, videoId };
     m_hStreamThread = CreateThread(NULL, 0, StreamResolveProc, st, 0, NULL);
     if (!m_hStreamThread) {
@@ -338,7 +364,6 @@ void MainWindow::DoResolveStream(const std::string& videoId) {
         delete st;
     }
 
-    // Thread 2: VP9 quality list (independent; non-blocking on main loop)
     VP9Task* vt = new VP9Task{ this, videoId };
     m_hVP9Thread = CreateThread(NULL, 0, VP9ResolveProc, vt, 0, NULL);
     if (!m_hVP9Thread) {
@@ -378,7 +403,7 @@ void MainWindow::DrawTopBar(float w) {
     ImGui::SetCursorPos(ImVec2(R_PAD, itemY));
     ImGui::PushStyleColor(ImGuiCol_Button,        ImVec4(0,0,0,0));
     ImGui::PushStyleColor(ImGuiCol_ButtonHovered, Theme::COL_CONTRAST_V4);
-    if (ImGui::Button("[S]", ImVec2(BTN_W, 28))) {
+    if (ImGui::Button(ICON_FA_HOUSE, ImVec2(BTN_W, 28))) {
         m_state.activePage = AppPage::Settings;
         m_state.drawerOpen = false;
     }
@@ -427,7 +452,7 @@ void MainWindow::DrawTopBar(float w) {
     ImGui::PushStyleColor(ImGuiCol_Button,        Theme::COL_ACCENT_V4);
     ImGui::PushStyleColor(ImGuiCol_ButtonHovered, Theme::COL_ACCENT_HOV_V4);
     if (searching) ImGui::BeginDisabled();
-    if ((ImGui::Button(searching ? "..." : "Search", ImVec2(SBTN_W, 28)) || enter) && !searching)
+    if ((ImGui::Button(searching ? "..." : ICON_FA_MAGNIFYING_GLASS " Search", ImVec2(SBTN_W, 28)) || enter) && !searching)
         DoSearch();
     if (searching) ImGui::EndDisabled();
     ImGui::PopStyleColor(2);
@@ -435,7 +460,14 @@ void MainWindow::DrawTopBar(float w) {
     ImGui::End();
 }
 
-static const char* kDrawerIcons[]  = {"[N]","[T]","[S]","[F]","[H]","[D]"};
+static const char* kDrawerIcons[]  = {
+    ICON_FA_NEWSPAPER,
+    ICON_FA_FIRE,
+    ICON_FA_RSS,
+    ICON_FA_HEART,
+    ICON_FA_CLOCK_ROTATE_LEFT,
+    ICON_FA_DOWNLOAD
+};
 static const char* kDrawerLabels[] = {
     "What's New","Trending","Subscriptions",
     "Favourites","History","Downloads"
@@ -472,32 +504,20 @@ void MainWindow::DrawDrawer(float h) {
 void MainWindow::DrawContent(float, float topH, float w, float h) {
     float cx = 0, cy = topH, cw = w, ch = h - topH;
 
-    // Always drain async video-info regardless of active page
     DrainSearchViewInfo(m_state, m_searchViewState);
 
-    // Absorb a pending related-thread handle so the destructor can join it
     if (m_state.pendingRelated.hThread != NULL) {
         if (m_hRelatedThread) CloseHandle(m_hRelatedThread);
         m_hRelatedThread = m_state.pendingRelated.hThread;
         m_state.pendingRelated.hThread = NULL;
     }
 
-    // Only kick off the stream resolver here — do NOT clear playRequested.
-    // DrawVideoDetailView consumes the flag and copies metadata into vds.
     if (m_state.playRequested && !m_state.pendingPlay.videoId.empty()) {
         CTLogger::LogC('I', "[MainWindow] playRequested -> videoId=%s",
             m_state.pendingPlay.videoId.c_str());
         DoResolveStream(m_state.pendingPlay.videoId);
-        // NOTE: playRequested is intentionally left true here so that
-        // DrawVideoDetailView can read it and copy title/channelName/etc.
-        // into vds before clearing it itself.
     }
 
-    // ---------------------------------------------------------------------------
-    // When VP9 qualities arrive from the background thread, apply them to the
-    // VideoDetail view.  Guard: apply only when 0 or 1 quality slots exist
-    // (0 = VP9 thread beat the stream resolver; 1 = only the Auto slot is present).
-    // ---------------------------------------------------------------------------
     if (m_state.pendingPlay.vp9QualitiesReady &&
         m_state.activePage == AppPage::VideoDetail &&
         m_videoDetailState.qualities.size() <= 1)
@@ -514,13 +534,6 @@ void MainWindow::DrawContent(float, float topH, float w, float h) {
         VD_ApplyVP9Qualities(m_videoDetailState, opts);
     }
 
-    // ---------------------------------------------------------------------------
-    // FIX: Tick PiP popup seek pendiente cada frame.
-    // Antes el seek solo se intentaba en DrawVideoDetailView pero si VLC tardaba
-    // en abrir el stream (estado != Playing en ese frame) el seek se perdia.
-    // Ahora se drena aqui cada frame hasta que el player del popup este Playing
-    // y la duracion sea valida.
-    // ---------------------------------------------------------------------------
     {
         PopupPlayerState& pop = m_videoDetailState.popup;
         if (pop.open && pop.seekPending && !pop.seekDone && pop.player) {
@@ -533,12 +546,10 @@ void MainWindow::DrawContent(float, float topH, float w, float h) {
                 pop.seekDone    = true;
             }
         }
-        // Cleanup PiP window if user closed it externally
         if (pop.open && pop.hwnd && !IsWindow(pop.hwnd)) {
             if (pop.player) {
                 double resumePos = pop.player->GetPosition();
                 pop.player->Stop();
-                // Resume main player from where PiP was
                 if (m_videoDetailState.playerInited && resumePos > 0.5) {
                     m_videoDetailState.player.Play();
                     m_videoDetailState.seekPos2     = resumePos;
@@ -573,9 +584,6 @@ void MainWindow::DrawContent(float, float topH, float w, float h) {
             DrawVideoDetailView(m_state, m_videoDetailState,
                 m_currentVideoTitle.c_str(), cx, cy, cw, ch, m_hWnd,
                 m_state.activePage == AppPage::VideoDetail);
-            // FIX: DrawDownloadDialog debe llamarse aqui, en el mismo frame
-            // que DrawVideoDetailView. Sin esta llamada el boton de descarga
-            // seteaba dlDialog.open=true pero el dialogo nunca se renderizaba.
             DrawDownloadDialog(m_videoDetailState.dlDialog, m_hWnd);
             break;
         case AppPage::Channel:
@@ -593,7 +601,7 @@ void MainWindow::DrawContent(float, float topH, float w, float h) {
                 ImGuiWindowFlags_NoMove      |
                 ImGuiWindowFlags_NoBringToFrontOnFocus);
             ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0,0,0,0));
-            if (ImGui::Button("<  Back")) m_state.activePage = AppPage::Main;
+            if (ImGui::Button(ICON_FA_ARROW_LEFT "  Back")) m_state.activePage = AppPage::Main;
             ImGui::PopStyleColor();
             ImGui::Separator();
             ImGui::Spacing();
@@ -635,25 +643,19 @@ LRESULT CALLBACK MainWindow::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
         if (self && self->m_pDevice && wParam != SIZE_MINIMIZED) {
             UINT newW = LOWORD(lParam);
             UINT newH = HIWORD(lParam);
-            // Always record the new size.
             self->m_pendingW = newW;
             self->m_pendingH = newH;
             if (wParam == SIZE_MAXIMIZED || wParam == SIZE_RESTORED) {
-                // Maximize and restore do NOT fire WM_EXITSIZEMOVE,
-                // so we must reset D3D9 immediately here.
                 self->m_pendingResize = false;
                 self->m_d3dpp.BackBufferWidth  = newW;
                 self->m_d3dpp.BackBufferHeight = newH;
                 self->ResetD3D();
             } else {
-                // SIZE_SIZED (drag resize): defer to WM_EXITSIZEMOVE
-                // to avoid resetting D3D9 on every pixel of the drag.
                 self->m_pendingResize = true;
             }
         }
         return 0;
     case WM_EXITSIZEMOVE:
-        // User finished dragging the resize handle — apply deferred D3D9 reset.
         if (self && self->m_pDevice && self->m_pendingResize) {
             self->m_d3dpp.BackBufferWidth  = self->m_pendingW;
             self->m_d3dpp.BackBufferHeight = self->m_pendingH;
@@ -680,7 +682,6 @@ void MainWindow::Run() {
             continue;
         }
 
-        // Process pending thumbnail downloads/uploads every frame
         m_thumbCache.Tick();
 
         ImGui_ImplDX9_NewFrame();

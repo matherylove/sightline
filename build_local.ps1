@@ -27,9 +27,6 @@ $Msys2Bash = "C:\msys64\usr\bin\bash.exe"
 if (-not (Test-Path $Msys2Bash)) { Die "MSYS2 not found at C:\msys64. Install it from https://www.msys2.org" }
 
 # Helper: run a bash command with the MINGW32 toolchain on PATH.
-# cmake, ninja, gcc, g++ all live in /mingw32/bin — bash -l does NOT add it
-# automatically unless MSYS2 was set up with mingw32 as the default shell.
-# We prepend it explicitly so every step can find the tools.
 function Bash($cmd) {
     & $Msys2Bash -lc "export PATH=/mingw32/bin:`$PATH; $cmd"
     if ($LASTEXITCODE -ne 0) { Die "Command failed: $cmd" }
@@ -86,6 +83,20 @@ if (-not (Test-Path "third_party\IconsFontAwesome6.h")) {
 }
 
 # ---------------------------------------------------------------------------
+# 2b. Font Awesome TTF (runtime asset — must ship next to ClientTube.exe)
+# ---------------------------------------------------------------------------
+New-Item -ItemType Directory -Path "assets" -Force | Out-Null
+
+if (-not (Test-Path "assets\fa-solid-900.ttf")) {
+    Write-Host "  Downloading fa-solid-900.ttf..."
+    Invoke-WebRequest `
+        -Uri "https://github.com/FortAwesome/Font-Awesome/raw/6.x/webfonts/fa-solid-900.ttf" `
+        -OutFile "assets\fa-solid-900.ttf"
+} else {
+    Write-Host "  fa-solid-900.ttf already present, skipping."
+}
+
+# ---------------------------------------------------------------------------
 # 3. VLC SDK
 # ---------------------------------------------------------------------------
 Step "Setting up VLC SDK"
@@ -121,7 +132,7 @@ if (-not (Test-Path "$VlcSDK\sdk\include\vlc\vlc.h")) {
 }
 
 # ---------------------------------------------------------------------------
-# 4. CMake configure (build dir is still .\build internally)
+# 4. CMake configure
 # ---------------------------------------------------------------------------
 Step "Configuring with CMake (Ninja / MinGW32)"
 
@@ -159,9 +170,15 @@ Copy-Item "build\ClientTube.exe"   $OutputDir -Force
 Copy-Item "$VlcSDK\libvlc.dll"     $OutputDir -Force
 Copy-Item "$VlcSDK\libvlccore.dll" $OutputDir -Force
 
-# Copy loose DLLs from the VLC SDK root that TLS / crypto plugins depend on
-# (libgnutls-*.dll, libgcrypt-*.dll, libgpg-error-*.dll, etc.).
-# These are bundled in the VLC win32 archive alongside libvlc.dll.
+# Copy assets/ folder (fonts, etc.) next to the executable
+$AssetsOut = Join-Path $OutputDir "assets"
+if (-not (Test-Path $AssetsOut)) {
+    New-Item -ItemType Directory -Path $AssetsOut | Out-Null
+}
+Copy-Item "assets\*" $AssetsOut -Recurse -Force
+Write-Host "  Copied assets\ -> $AssetsOut"
+
+# Copy loose DLLs from the VLC SDK root that TLS / crypto plugins depend on.
 $TlsDlls = @(
     "libgnutls*.dll",
     "libgcrypt*.dll",
@@ -182,20 +199,18 @@ foreach ($pattern in $TlsDlls) {
 }
 
 # Only copy the plugin subfolders actually needed for HTTPS streaming + VP9/H264 playback.
-# 'keystore' and 'misc' contain the TLS client plugin (libgnutls_tls_plugin.dll)
-# without which VLC cannot open HTTPS URLs at all.
 $NeededPlugins = @(
-    "access",        # HTTP, HTTPS, HLS — required to open YouTube stream URLs
-    "keystore",      # TLS credential / certificate store plugins
-    "misc",          # GnuTLS TLS client plugin lives here (libgnutls_tls_plugin.dll)
-    "codec",         # avcodec: H.264, VP9, AAC, Opus decoding
-    "demux",         # mp4, mkv, flv container parsers
-    "packetizer",    # H.264 / HEVC packetizers (needed by avcodec)
-    "audio_output",  # DirectSound — Windows audio output
-    "video_output",  # Direct3D9 — video rendering (matches D3D9 in MainWindow)
-    "audio_filter",  # volume, resampler (needed for stable audio)
-    "video_filter",  # deinterlace etc. (small, safe to include)
-    "logger"         # VLC internal logging (tiny, avoids missing-module warnings)
+    "access",
+    "keystore",
+    "misc",
+    "codec",
+    "demux",
+    "packetizer",
+    "audio_output",
+    "video_output",
+    "audio_filter",
+    "video_filter",
+    "logger"
 )
 
 $PluginsDest = Join-Path $OutputDir "plugins"
@@ -226,4 +241,5 @@ Write-Host "Build complete!" -ForegroundColor Green
 Write-Host "  Output folder : $OutputDir"
 Write-Host "  Executable    : $OutputDir\ClientTube.exe"
 Write-Host "  VLC DLLs      : libvlc.dll  libvlccore.dll"
+Write-Host "  Assets        : assets\ (fa-solid-900.ttf, ...)"
 Write-Host "  Plugins       : plugins\ (essential subfolders only)"
