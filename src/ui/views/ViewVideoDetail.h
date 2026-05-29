@@ -17,6 +17,12 @@
 //              seekbar (thin frame, no thumb square), status dot has proper
 //              right-margin before vol block, sidebar search deduplicated
 //              (no double search bar in Up Next), btn play width = other btns.
+// GUI-FIXES-4: header title ellipsis, Back btn baseline-aligned with title,
+//              tab bar uses underline indicator style (not filled bg),
+//              Subscribe btn accent-filled like a real CTA, meta line has
+//              explicit top-margin spacing, sidebar thin scrollbar, related
+//              panel item gap increased, description text has proper left PAD,
+//              transport row items vertically centred consistently.
 
 #include "../AppState.h"
 #include "../Widgets.h"
@@ -453,7 +459,9 @@ static inline void VD_DrawRelatedPanel(AppState& state,
     const float THUMB_H  = 60.f;
     const float THUMB_W  = 107.f;  // ~16:9
     const float ITEM_PAD = 8.f;
-    const float ITEM_GAP = 4.f;
+    // [FIX-4] Increased gap between related items from 4px to 8px for better
+    // visual separation — easier to scan the list.
+    const float ITEM_GAP = 8.f;
     const float TEXT_X   = PAD + THUMB_W + ITEM_PAD;
     const float TEXT_W   = panelW - TEXT_X - PAD;
 
@@ -828,23 +836,44 @@ inline void DrawVideoDetailView(
     ImGui::PopStyleColor(); ImGui::PopStyleVar();
     ImDrawList* dlTop=ImGui::GetWindowDrawList();
 
-    // Back button — vertically centred in BACKH row, consistent PAD
-    ImGui::SetCursorPos({PAD, (BACKH - BH) * 0.5f});
-    ImGui::PushStyleColor(ImGuiCol_Button,       {0,0,0,0});
-    ImGui::PushStyleColor(ImGuiCol_ButtonHovered,{.22f,.22f,.22f,1});
-    ImGui::PushStyleColor(ImGuiCol_ButtonActive, {.32f,.32f,.32f,1});
-    ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 4.f);
-    if (ImGui::Button(ICON_FA_CHEVRON_LEFT "  Back",{84,BH})) {
-        vds.player.Stop();
-        vds.playStarted=vds.playerInited=false;
-        vds.streamUrl.clear(); state.pendingPlay.videoUrl.clear();
-        if (vds.playerHwnd)  { ShowWindow(vds.playerHwnd,SW_HIDE);  DestroyWindow(vds.playerHwnd);  vds.playerHwnd=NULL; }
-        if (vds.overlayHwnd) { ShowWindow(vds.overlayHwnd,SW_HIDE); DestroyWindow(vds.overlayHwnd); vds.overlayHwnd=NULL; }
-        vds.cachedPX=vds.cachedPY=vds.cachedPW=vds.cachedPH=-1;
-        state.activePage=state.prevPage;
+    // -----------------------------------------------------------------------
+    // BACK ROW — Back button + video title, both vertically centred in BACKH
+    // [FIX-4] Title is truncated with ellipsis so it never overflows.
+    //         Back button and title share the same vertical centre line.
+    // -----------------------------------------------------------------------
+    {
+        const float rowCY = (BACKH - BH) * 0.5f;
+        // Back button
+        ImGui::SetCursorPos({PAD, rowCY});
+        ImGui::PushStyleColor(ImGuiCol_Button,       {0,0,0,0});
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered,{.22f,.22f,.22f,1});
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, {.32f,.32f,.32f,1});
+        ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 4.f);
+        if (ImGui::Button(ICON_FA_CHEVRON_LEFT "  Back",{84,BH})) {
+            vds.player.Stop();
+            vds.playStarted=vds.playerInited=false;
+            vds.streamUrl.clear(); state.pendingPlay.videoUrl.clear();
+            if (vds.playerHwnd)  { ShowWindow(vds.playerHwnd,SW_HIDE);  DestroyWindow(vds.playerHwnd);  vds.playerHwnd=NULL; }
+            if (vds.overlayHwnd) { ShowWindow(vds.overlayHwnd,SW_HIDE); DestroyWindow(vds.overlayHwnd); vds.overlayHwnd=NULL; }
+            vds.cachedPX=vds.cachedPY=vds.cachedPW=vds.cachedPH=-1;
+            state.activePage=state.prevPage;
+        }
+        ImGui::PopStyleVar();
+        ImGui::PopStyleColor(3);
+
+        // [FIX-4] Video title in header — truncated, vertically aligned to Back btn
+        if (!vds.title.empty()) {
+            const float titleX   = PAD + 84.f + 8.f;
+            const float titleMaxW = LW - titleX - PAD;
+            std::string truncTitle = Widgets::TruncateText(vds.title.c_str(), titleMaxW);
+            ImVec2 titleScreenPos = ImGui::GetWindowPos();
+            titleScreenPos.x += titleX;
+            titleScreenPos.y += rowCY + (BH - ImGui::GetTextLineHeight()) * 0.5f;
+            dlTop->AddText(titleScreenPos,
+                ImGui::ColorConvertFloat4ToU32(Theme::COL_ACCENT_V4),
+                truncTitle.c_str());
+        }
     }
-    ImGui::PopStyleVar();
-    ImGui::PopStyleColor(3);
 
     // Video rect
     float vidOffX=(LW-PAD*2.f-vidW)*.5f+PAD;
@@ -943,11 +972,10 @@ inline void DrawVideoDetailView(
 
     // -----------------------------------------------------------------------
     // TRANSPORT ROW — FA6 icons
-    // [FIX] Play/Pause button same width as siblings (BW), no extra +16
+    // All transport buttons share the same width BW for symmetry.
     // -----------------------------------------------------------------------
     float ctrRowY;
     {
-        // [FIX] All transport buttons share the same width BW for symmetry
         const float BW=BH+2.f, G=4.f;
         ctrRowY=ImGui::GetCursorPosY();
         ImGui::SetCursorPos({PAD,ctrRowY+(CTR_H-BH)*.5f});
@@ -965,7 +993,6 @@ inline void DrawVideoDetailView(
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("-10s");
         ImGui::SameLine(0,G);
 
-        // [FIX] Play/Pause same width BW — no special wider size
         ImGui::PushStyleColor(ImGuiCol_Button,       isPlaying?ImVec4{.15f,.15f,.15f,1}:Theme::COL_ACCENT_V4);
         ImGui::PushStyleColor(ImGuiCol_ButtonHovered,Theme::COL_ACCENT_V4);
         const char* playIcon = isPlaying ? ICON_FA_PAUSE : ICON_FA_PLAY;
@@ -987,7 +1014,7 @@ inline void DrawVideoDetailView(
         ImGui::PopStyleVar();
         ImGui::PopStyleColor(3);
 
-        // [FIX] Status dot — 16px right margin before volume block, no overlap
+        // Status dot — 16px right margin before volume block
         ImGui::SameLine(0, 16);
         {
             ImU32 dc=IM_COL32(90,90,90,255); const char* dt="Idle";
@@ -1015,10 +1042,8 @@ inline void DrawVideoDetailView(
                 ImGui::SetTooltip("%s", dt);
         }
 
-        // -----------------------------------------------------------------------
-        // Volume — speaker icon + slim slider (FrameRounding=full, no frame border)
-        // right-aligned block: [vol icon][vol slider][quality combo]
-        // -----------------------------------------------------------------------
+        // Volume — speaker icon + slim slider, right-aligned
+        // [vol icon][vol slider][quality combo]
         const float VOL_W=80.f, QUAL_W=130.f, MG=6.f;
         float volRowY = ctrRowY+(CTR_H-BH)*.5f;
         ImGui::SetCursorPos({LW-PAD-QUAL_W-MG-VOL_W-22.f, volRowY});
@@ -1037,14 +1062,14 @@ inline void DrawVideoDetailView(
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("Mute / Unmute");
         ImGui::PopStyleColor(3);
         ImGui::SameLine(0, 2);
-        // [FIX] Volume slider styled like seekbar: thin track, rounded, no square thumb frame
+        // Volume slider styled like seekbar: thin track, rounded, no square thumb frame
         ImGui::PushStyleColor(ImGuiCol_SliderGrab,      Theme::COL_ACCENT_V4);
         ImGui::PushStyleColor(ImGuiCol_SliderGrabActive,Theme::COL_ACCENT_HOV_V4);
         ImGui::PushStyleColor(ImGuiCol_FrameBg,         ImVec4{0.22f,0.22f,0.22f,1.f});
         ImGui::PushStyleColor(ImGuiCol_FrameBgHovered,  ImVec4{0.28f,0.28f,0.28f,1.f});
-        ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 99.f);   // pill-shape track
-        ImGui::PushStyleVar(ImGuiStyleVar_GrabRounding,  99.f);   // round grab
-        ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 0.f);  // no border on track
+        ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 99.f);
+        ImGui::PushStyleVar(ImGuiStyleVar_GrabRounding,  99.f);
+        ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 0.f);
         ImGui::PushStyleVar(ImGuiStyleVar_GrabMinSize, 10.f);
         ImGui::SetNextItemWidth(VOL_W);
         int vol=vds.volume;
@@ -1137,22 +1162,43 @@ inline void DrawVideoDetailView(
             ImGuiWindowFlags_NoScrollbar|ImGuiWindowFlags_NoScrollWithMouse);
         ImGui::PopStyleColor(); ImGui::PopStyleVar();
 
-        // Tab bar — equal padding on both tabs
+        // -----------------------------------------------------------------------
+        // TAB BAR — underline indicator style (no filled background on active tab)
+        // [FIX-4] Replaced filled-bg active tab with a flat transparent background
+        // + a 3px accent underline drawn below the active tab label.
+        // This matches NewPipe / YouTube tab style exactly.
+        // -----------------------------------------------------------------------
         const int NTABS=(int)VideoDetailTab::COUNT;
         float tabW=LW/(float)NTABS;
         ImGui::SetCursorPos({0,0});
+        // Shared tab bar background line
+        {
+            ImVec2 barTL = ImGui::GetCursorScreenPos();
+            ImDrawList* dlBot = ImGui::GetWindowDrawList();
+            dlBot->AddRectFilled(barTL, {barTL.x + LW, barTL.y + BH},
+                ImGui::ColorConvertFloat4ToU32(Theme::COL_SURFACE2));
+        }
         for (int ti=0;ti<NTABS;ti++) {
             bool active=(vds.activeTab==(VideoDetailTab)ti);
-            ImGui::PushStyleColor(ImGuiCol_Button,
-                active?Theme::COL_ACCENT_V4:Theme::COL_SURFACE2);
-            ImGui::PushStyleColor(ImGuiCol_ButtonHovered,
-                active?Theme::COL_ACCENT_V4:Theme::COL_CONTRAST_V4);
-            ImGui::PushStyleColor(ImGuiCol_ButtonActive, Theme::COL_ACCENT_HOV_V4);
+            ImGui::PushStyleColor(ImGuiCol_Button,        {0,0,0,0});
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4{1,1,1,0.05f});
+            ImGui::PushStyleColor(ImGuiCol_ButtonActive,  ImVec4{1,1,1,0.08f});
+            // [FIX-4] Active label is bright; inactive is muted
+            ImGui::PushStyleColor(ImGuiCol_Text, active ? Theme::COL_ACCENT_V4 : Theme::COL_TEXT_DIM_V4);
             ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 0.f);
             if (ImGui::Button(kVDTabs[ti],{tabW,BH}))
                 vds.activeTab=(VideoDetailTab)ti;
             ImGui::PopStyleVar();
-            ImGui::PopStyleColor(3);
+            ImGui::PopStyleColor(4);
+            // [FIX-4] Accent underline drawn on active tab only
+            if (active) {
+                ImVec2 p  = ImGui::GetItemRectMin();
+                ImVec2 pb = ImGui::GetItemRectMax();
+                ImGui::GetWindowDrawList()->AddRectFilled(
+                    ImVec2(p.x + 4.f, pb.y - 3.f),
+                    ImVec2(pb.x - 4.f, pb.y),
+                    ImGui::ColorConvertFloat4ToU32(Theme::COL_ACCENT_V4));
+            }
             if (ti<NTABS-1) ImGui::SameLine(0,0);
         }
 
@@ -1168,7 +1214,7 @@ inline void DrawVideoDetailView(
             ImGui::SetCursorPos({PAD,PAD});
             ImGui::PushTextWrapPos(LW-PAD);
 
-            // [FIX] Title — plain TextWrapped, no PushFont/PopFont to avoid
+            // Title — plain TextWrapped, no PushFont/PopFont to avoid
             // Missing PopFont() assert. COL_TEXT is already default text colour.
             if (!vds.title.empty()) {
                 ImGui::PushStyleColor(ImGuiCol_Text, Theme::COL_TEXT);
@@ -1189,18 +1235,23 @@ inline void DrawVideoDetailView(
                 ImGui::PopStyleColor();
             }
 
-            // Subscribe button — fixed width, consistent rounding
+            // [FIX-4] Subscribe button — accent-filled CTA so it reads as a
+            // primary action, not a generic surface button.
             ImGui::SetCursorPosX(PAD);
-            ImGui::PushStyleColor(ImGuiCol_Button,        Theme::COL_SURFACE2);
-            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, Theme::COL_ACCENT_SOFT);
-            ImGui::PushStyleColor(ImGuiCol_ButtonActive,  Theme::COL_ACCENT_V4);
-            ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 4.f);
+            ImGui::PushStyleColor(ImGuiCol_Button,        Theme::COL_ACCENT_V4);
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, Theme::COL_ACCENT_HOV_V4);
+            ImGui::PushStyleColor(ImGuiCol_ButtonActive,  Theme::COL_ACCENT_SOFT);
+            ImGui::PushStyleColor(ImGuiCol_Text,          ImVec4{1,1,1,1});
+            ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 14.f); // pill shape
             if (ImGui::Button(ICON_FA_BELL "  Subscribe", {120.f, BH}))
                 ImGui::SetTooltip("Subscribe not implemented");
             ImGui::PopStyleVar();
-            ImGui::PopStyleColor(3);
+            ImGui::PopStyleColor(4);
 
-            // Meta line — views · duration, COL_TEXT_FAINT (tertiary)
+            // [FIX-4] Meta line — explicit top spacing so it doesn't crowd
+            // the Subscribe button, and a separator below before the description.
+            ImGui::Spacing();
+            ImGui::Spacing();
             ImGui::SetCursorPosX(PAD);
             std::string meta;
             if (!vds.viewCount.empty()) meta += vds.viewCount;
@@ -1235,22 +1286,25 @@ inline void DrawVideoDetailView(
 
     // =====================================================================
     // RIGHT PANEL (Up Next)
-    // [FIX] Single search bar only — removed the duplicate input that appeared
+    // Single search bar only — removed the duplicate input that appeared
     // because the sidebar was rendering both a per-panel search and the main
     // top-bar search mirror. Now sidebar has exactly ONE local search field.
-    // Header height accounting updated to match (56px -> 52px).
     // =====================================================================
     if (wide) {
         float rpX=LW+PAD*2.f, rpY=0.f, rpH=h;
         ImGui::SetCursorPos({rpX,rpY});
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding,{0,0});
         ImGui::PushStyleColor(ImGuiCol_ChildBg, Theme::COL_CARD);
+        // [FIX-4] Thin scrollbar for the right panel — less visually aggressive
+        ImGui::PushStyleVar(ImGuiStyleVar_ScrollbarSize, 6.f);
+        ImGui::PushStyleColor(ImGuiCol_ScrollbarBg,       {0,0,0,0});
+        ImGui::PushStyleColor(ImGuiCol_ScrollbarGrab,     Theme::COL_CONTRAST_V4);
+        ImGui::PushStyleColor(ImGuiCol_ScrollbarGrabHover,Theme::COL_TEXT_DIM_V4);
         ImGui::BeginChild("##vd_right",{RW,rpH},false,
             ImGuiWindowFlags_NoScrollbar|ImGuiWindowFlags_NoScrollWithMouse);
-        ImGui::PopStyleColor(); ImGui::PopStyleVar();
+        ImGui::PopStyleColor(4); ImGui::PopStyleVar(2);
 
-        // "Up Next" header — PAD from both sides, no search bar here
-        // (sidebar search was duplicate; global search is in top bar)
+        // "Up Next" header — PAD from both sides
         ImGui::SetCursorPos({PAD, 10.f});
         ImGui::PushStyleColor(ImGuiCol_Text, Theme::COL_TEXT);
         ImGui::TextUnformatted("Up Next");
@@ -1262,10 +1316,15 @@ inline void DrawVideoDetailView(
         ImGui::Spacing();
 
         // Related list scroll area — header is ~30px
+        // [FIX-4] Thin scrollbar applied to the inner scroll region too
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding,{0,0});
-        ImGui::PushStyleColor(ImGuiCol_ChildBg,{0,0,0,0});
+        ImGui::PushStyleVar(ImGuiStyleVar_ScrollbarSize, 6.f);
+        ImGui::PushStyleColor(ImGuiCol_ChildBg,           {0,0,0,0});
+        ImGui::PushStyleColor(ImGuiCol_ScrollbarBg,       {0,0,0,0});
+        ImGui::PushStyleColor(ImGuiCol_ScrollbarGrab,     Theme::COL_CONTRAST_V4);
+        ImGui::PushStyleColor(ImGuiCol_ScrollbarGrabHover,Theme::COL_TEXT_DIM_V4);
         ImGui::BeginChild("##vd_rel",{RW,rpH-32.f},false,0);
-        ImGui::PopStyleColor(); ImGui::PopStyleVar();
+        ImGui::PopStyleColor(4); ImGui::PopStyleVar(2);
 
         VD_DrawRelatedPanel(state,vds,RW,PAD);
 
