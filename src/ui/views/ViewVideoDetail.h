@@ -27,6 +27,10 @@
 //              via explicit font-size push, description SetCursorPosX(PAD)
 //              enforced after every TextWrapped, Subscribe FramePadding
 //              symmetric {8,3} matching quality combo style.
+// GUI-FIXES-6: Subscribe FramePadding simétrico {8,3} (igual al quality combo),
+//              TextWrapPos estricto en related items (título con wrap ajustado
+//              a RW-PAD-THUMB_W-8), consistencia SetCursorPosX(PAD) post-wrap
+//              en descripción reforzada.
 
 #include "../AppState.h"
 #include "../Widgets.h"
@@ -591,6 +595,8 @@ static void VD_DrawRelatedPanel(AppState& state, VideoDetailState& vds,
 
     const float THUMB_W=96.f, THUMB_H=54.f, ITEM_H=66.f;
     const float itemW = RW - PAD * 2.f;
+    // [FIX] Wrap pos ajustado al ancho real del bloque de texto (excluye thumbnail + gap)
+    const float textBlockW = RW - PAD - THUMB_W - 8.f;
 
     for (auto& it : state.pendingRelated.items) {
         ImGui::SetCursorPosX(PAD);
@@ -626,10 +632,10 @@ static void VD_DrawRelatedPanel(AppState& state, VideoDetailState& vds,
                 {thumbTL.x+THUMB_W, thumbTL.y+THUMB_H}, IM_COL32(30,30,30,255), 4.f);
         }
 
-        // Text block — title primary, channel+views faint+smaller
+        // [FIX] Text block — PushTextWrapPos ajustado al bloque de texto, no al panel entero
         float tx = PAD + THUMB_W + 8.f;
         ImGui::SetCursorPos({tx, iy + 2.f});
-        ImGui::PushTextWrapPos(RW - PAD);
+        ImGui::PushTextWrapPos(ImGui::GetWindowPos().x + PAD + THUMB_W + 8.f + textBlockW);
         ImGui::PushStyleColor(ImGuiCol_Text, Theme::COL_TEXT);
         ImGui::TextWrapped("%s", it.title.c_str());
         ImGui::PopStyleColor();
@@ -1191,6 +1197,7 @@ static void DrawVideoDetail(AppState& state, VideoDetailState& vds,
                 ImGui::PushStyleColor(ImGuiCol_Text, Theme::COL_TEXT);
                 ImGui::TextWrapped("%s", vds.title.c_str());
                 ImGui::PopStyleColor();
+                ImGui::SetCursorPosX(PAD); // [FIX] restaurar X tras TextWrapped
             }
 
             // Channel name — dim+secondary, clearly below title in hierarchy
@@ -1210,16 +1217,16 @@ static void DrawVideoDetail(AppState& state, VideoDetailState& vds,
                 ImGui::PopStyleColor(3);
             }
 
-            // [FIX] Subscribe button — symmetric FramePadding {8,3} matching quality combo
+            // [FIX] Subscribe button — FramePadding simétrico {8,3} igual al quality combo
             ImGui::SetCursorPosX(PAD);
             ImGui::PushStyleColor(ImGuiCol_Button,        Theme::COL_SURFACE2);
             ImGui::PushStyleColor(ImGuiCol_ButtonHovered, Theme::COL_ACCENT_SOFT);
             ImGui::PushStyleColor(ImGuiCol_ButtonActive,  Theme::COL_ACCENT_V4);
             ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 4.f);
-            ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2{8.f, 3.f});
+            ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2{8.f, 3.f}); // [FIX] simétrico
             if (ImGui::Button(ICON_FA_BELL "  Subscribe", {120.f, BH}))
                 ImGui::SetTooltip("Subscribe not implemented");
-            ImGui::PopStyleVar(2);
+            ImGui::PopStyleVar(2); // FrameRounding + FramePadding
             ImGui::PopStyleColor(3);
 
             // Meta line — views · duration, COL_TEXT_FAINT (tertiary), margin-top via Dummy
@@ -1239,13 +1246,13 @@ static void DrawVideoDetail(AppState& state, VideoDetailState& vds,
             ImGui::PopStyleColor();
             ImGui::Spacing();
 
-            // [FIX] Description body — SetCursorPosX(PAD) enforced before and after wrap
+            // [FIX] Description body — SetCursorPosX(PAD) antes y después de TextWrapped
             if (!vds.description.empty()) {
                 ImGui::SetCursorPosX(PAD);
                 ImGui::PushStyleColor(ImGuiCol_Text, Theme::COL_TEXT_DIM_V4);
                 ImGui::TextWrapped("%s", vds.description.c_str());
                 ImGui::PopStyleColor();
-                ImGui::SetCursorPosX(PAD);
+                ImGui::SetCursorPosX(PAD); // [FIX] restaurar X tras wrap
             }
             ImGui::PopTextWrapPos();
         }
@@ -1273,7 +1280,7 @@ static void DrawVideoDetail(AppState& state, VideoDetailState& vds,
             ImGuiWindowFlags_NoScrollbar|ImGuiWindowFlags_NoScrollWithMouse);
         ImGui::PopStyleColor(); ImGui::PopStyleVar();
 
-        // [FIX] "Up Next" header — aligned to PAD (same as panel body content)
+        // [FIX] "Up Next" header — alineado a PAD (consistente con el cuerpo del panel)
         ImGui::SetCursorPos({PAD, 10.f});
         ImGui::PushStyleColor(ImGuiCol_Text, Theme::COL_TEXT);
         ImGui::TextUnformatted("Up Next");
