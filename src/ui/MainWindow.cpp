@@ -9,7 +9,9 @@
 #include "imgui.h"
 #include "imgui_impl_win32.h"
 #include "imgui_impl_dx9.h"
-#include <IconsFontAwesome6.h>
+// NOTE: IconsFontAwesome6.h is already included transitively via MainWindow.h ->
+//       ViewVideoDetail.h -> IconsFontAwesome6.h (src/ui/). Including the
+//       third_party copy here caused redefinition warnings for every macro.
 
 #include <wchar.h>
 #include <string>
@@ -140,20 +142,14 @@ static std::string GetExeDir() {
 
 // ---------------------------------------------------------------------------
 // LoadUIFont
-// Loads the main UI font (Verdana / Tahoma / Arial fallback chain) and then
-// MERGES Font Awesome 6 Solid on top so that FA glyph strings render inline
-// with normal text.  The icon font is looked for next to the executable and
-// in an assets/ sub-folder; if neither is present the merge is simply skipped
-// and all icon labels fall back to their quoted ASCII alternatives.
 // ---------------------------------------------------------------------------
 static void LoadUIFont() {
     ImGuiIO& io = ImGui::GetIO();
 
-    // --- 1. Main proportional font (Latin + arrows range) ---
     static const ImWchar kBaseRanges[] = {
-        0x0020, 0x017E,   // Basic Latin + Latin Extended-A
-        0x2000, 0x206F,   // General Punctuation
-        0x2190, 0x21FF,   // Arrows
+        0x0020, 0x017E,
+        0x2000, 0x206F,
+        0x2190, 0x21FF,
         0,
     };
     const char* kCandidates[] = {
@@ -181,8 +177,6 @@ static void LoadUIFont() {
     if (!baseFont)
         CTLogger::LogC('W', "[Font] No TTF found, using ProggyClean default.");
 
-    // --- 2. Font Awesome 6 Solid --- merge into the same atlas slot ---
-    // Search order: exe dir, then exe dir/assets/
     std::string exeDir = GetExeDir();
     const std::string kFAName = "fa-solid-900.ttf";
     std::string faCandidates[] = {
@@ -203,9 +197,9 @@ static void LoadUIFont() {
             continue;
 
         ImFontConfig cfgIcons;
-        cfgIcons.MergeMode        = true;   // merge into the previous font
+        cfgIcons.MergeMode        = true;
         cfgIcons.PixelSnapH       = true;
-        cfgIcons.GlyphMinAdvanceX = 14.0f;  // keep icon glyphs monospaced
+        cfgIcons.GlyphMinAdvanceX = 14.0f;
         cfgIcons.OversampleH      = 2;
         cfgIcons.OversampleV      = 1;
 
@@ -436,7 +430,6 @@ void MainWindow::DrawTopBar(float w) {
 
     float itemY = (TOP_H - BH) * 0.5f;
 
-    // Home / logo button — FA6 house icon
     ImGui::SetCursorPos(ImVec2(R_PAD, itemY));
     ImGui::PushStyleColor(ImGuiCol_Button,        ImVec4(0,0,0,0));
     ImGui::PushStyleColor(ImGuiCol_ButtonHovered, Theme::COL_CONTRAST_V4);
@@ -447,7 +440,6 @@ void MainWindow::DrawTopBar(float w) {
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("Settings");
     ImGui::PopStyleColor(2);
 
-    // Page title (centered)
     const char* pageTitle = "Sightline Visualizer";
     if (m_state.activePage == AppPage::Search)      pageTitle = "Search";
     if (m_state.activePage == AppPage::Settings)    pageTitle = "Settings";
@@ -472,7 +464,6 @@ void MainWindow::DrawTopBar(float w) {
     ImGui::SetCursorPos(ImVec2(titleX, (TOP_H - textH) * 0.5f));
     ImGui::TextColored(Theme::COL_ACCENT_V4, "%s", truncTitle.c_str());
 
-    // Search field + button
     float blockX = w - BLOCK_W;
     ImGui::SetCursorPos(ImVec2(blockX, itemY));
     ImGui::PushStyleColor(ImGuiCol_FrameBg,        Theme::COL_CONTRAST_V4);
@@ -495,7 +486,6 @@ void MainWindow::DrawTopBar(float w) {
     ImGui::PushStyleColor(ImGuiCol_Button,        Theme::COL_ACCENT_V4);
     ImGui::PushStyleColor(ImGuiCol_ButtonHovered, Theme::COL_ACCENT_HOV_V4);
     if (searching) ImGui::BeginDisabled();
-    // Search button: magnifying glass icon + label
     const char* searchBtnLabel = searching
         ? ICON_FA_MAGNIFYING_GLASS " ..."
         : ICON_FA_MAGNIFYING_GLASS " Search";
@@ -508,15 +498,13 @@ void MainWindow::DrawTopBar(float w) {
     ImGui::End();
 }
 
-// Drawer icons: FA6 glyphs with ASCII fallback string built at compile time.
-// The fallback is never shown if fa-solid-900.ttf is present.
 static const char* kDrawerIcons[]  = {
-    ICON_FA_WAND_MAGIC_SPARKLES,  // What's New
-    ICON_FA_FIRE,                 // Trending
-    ICON_FA_RSS,                  // Subscriptions
-    ICON_FA_HEART,                // Favourites
-    ICON_FA_CLOCK_ROTATE_LEFT,    // History
-    ICON_FA_DOWNLOAD,             // Downloads
+    ICON_FA_WAND_MAGIC_SPARKLES,
+    ICON_FA_FIRE,
+    ICON_FA_RSS,
+    ICON_FA_HEART,
+    ICON_FA_CLOCK_ROTATE_LEFT,
+    ICON_FA_DOWNLOAD,
 };
 static const char* kDrawerLabels[] = {
     "What's New","Trending","Subscriptions",
@@ -631,9 +619,9 @@ void MainWindow::DrawContent(float, float topH, float w, float h) {
                 m_statusMsg, m_searching.load(), cx, cy, cw, ch);
             break;
         case AppPage::VideoDetail:
-            DrawVideoDetailView(m_state, m_videoDetailState,
-                m_currentVideoTitle.c_str(), cx, cy, cw, ch, m_hWnd,
-                m_state.activePage == AppPage::VideoDetail);
+            // FIX: corrected function name DrawVideoDetail (was DrawVideoDetailView)
+            // and removed extra args (currentVideoTitle, bool) that don't exist in the signature.
+            DrawVideoDetail(m_state, m_videoDetailState, m_hWnd, cx, cy, cw, ch);
             DrawDownloadDialog(m_videoDetailState.dlDialog, m_hWnd);
             break;
         case AppPage::Channel:
