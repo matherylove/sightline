@@ -232,7 +232,7 @@ void MainWindow::ApplyTheme() {
     s.CellPadding       = ImVec2(6.0f, 4.0f);
     s.ScrollbarSize     = 6.0f;
     s.WindowBorderSize  = 0.0f;
-    s.FrameBorderSize   = 0.0f;  // no frame borders — cleaner look
+    s.FrameBorderSize   = 0.0f;
     s.ButtonTextAlign   = ImVec2(0.5f, 0.5f);
     s.WindowPadding     = ImVec2(0.0f, 0.0f);
 
@@ -412,12 +412,14 @@ void MainWindow::DoResolveStream(const std::string& videoId) {
 void MainWindow::DrawTopBar(float w) {
     const float TOP_H  = 48.0f;
     const float BH     = 28.0f;
-    const float BTN_W  = 40.0f;
+    const float BTN_W  = 40.0f;   // ancho de cada botón icono (🏠 y ⚙)
     const float SRCH_W = 260.0f;
     const float SBTN_W = 76.0f;
     const float GAP    = 6.0f;
     const float R_PAD  = 8.0f;
-    const float BLOCK_W = SRCH_W + GAP + SBTN_W + R_PAD + 16.f;
+
+    // Bloque derecho: [settings_btn][gap][search_input][gap][search_btn][r_pad]
+    const float BLOCK_W = BTN_W + GAP + SRCH_W + GAP + SBTN_W + 16.f + R_PAD;
 
     ImGui::SetNextWindowPos(ImVec2(0, 0));
     ImGui::SetNextWindowSize(ImVec2(w, TOP_H));
@@ -439,7 +441,7 @@ void MainWindow::DrawTopBar(float w) {
 
     float itemY = (TOP_H - BH) * 0.5f;
 
-    // Home button (navigates to Main page)
+    // ── Home button (left side) ──────────────────────────────────────────────
     ImGui::SetCursorPos(ImVec2(R_PAD, itemY));
     ImGui::PushStyleColor(ImGuiCol_Button,        ImVec4(0,0,0,0));
     ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(1,1,1,0.08f));
@@ -453,7 +455,7 @@ void MainWindow::DrawTopBar(float w) {
     ImGui::PopStyleColor(3);
     ImGui::PopStyleVar();
 
-    // Page title — neutral COL_TEXT (not accent)
+    // ── Page title (centred in the zone between home btn and right block) ────
     const char* pageTitle = "Sightline";
     if (m_state.activePage == AppPage::Search)      pageTitle = "Search";
     if (m_state.activePage == AppPage::Settings)    pageTitle = "Settings";
@@ -476,12 +478,28 @@ void MainWindow::DrawTopBar(float w) {
     if (titleX < leftEdge) titleX = leftEdge;
     float textH  = ImGui::GetTextLineHeight();
     ImGui::SetCursorPos(ImVec2(titleX, (TOP_H - textH) * 0.5f));
-    // Use plain text colour — accent is reserved for interactive elements
     ImGui::TextColored(Theme::COL_TEXT, "%s", truncTitle.c_str());
 
-    // Search block
+    // ── Right block: [⚙ Settings] [search input] [Search btn] ───────────────
     float blockX = w - BLOCK_W;
+
+    // Settings gear button
     ImGui::SetCursorPos(ImVec2(blockX, itemY));
+    ImGui::PushStyleColor(ImGuiCol_Button,
+        m_state.activePage == AppPage::Settings
+            ? Theme::COL_ACCENT_SOFT
+            : ImVec4(0,0,0,0));
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(1,1,1,0.08f));
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive,  ImVec4(1,1,1,0.14f));
+    ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 5.f);
+    if (ImGui::Button(ICON_FA_GEAR, ImVec2(BTN_W, BH)))
+        m_state.activePage = AppPage::Settings;
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Settings");
+    ImGui::PopStyleColor(3);
+    ImGui::PopStyleVar();
+
+    // Search input
+    ImGui::SetCursorPos(ImVec2(blockX + BTN_W + GAP, itemY));
     ImGui::PushStyleColor(ImGuiCol_FrameBg,        ImVec4(0.14f,0.14f,0.14f,1.f));
     ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, ImVec4(0.20f,0.20f,0.20f,1.f));
     ImGui::PushStyleColor(ImGuiCol_FrameBgActive,  Theme::COL_ACCENT_SOFT);
@@ -570,13 +588,10 @@ void MainWindow::DrawContent(float, float topH, float w, float h) {
         m_state.pendingRelated.hThread = NULL;
     }
 
-    // GUI-FIXES-11: reset playRequested immediately after kicking the resolver.
-    // Without this, DoResolveStream was called every frame while streamResolving
-    // was already true, and the flag never cleared — stream stayed at "Resolving".
     if (m_state.playRequested && !m_state.pendingPlay.videoId.empty()) {
         CTLogger::LogC('I', "[MainWindow] playRequested -> videoId=%s",
             m_state.pendingPlay.videoId.c_str());
-        m_state.playRequested = false;  // CRITICAL: clear before DoResolveStream
+        m_state.playRequested = false;
         DoResolveStream(m_state.pendingPlay.videoId);
     }
 
@@ -644,8 +659,6 @@ void MainWindow::DrawContent(float, float topH, float w, float h) {
             break;
         case AppPage::VideoDetail:
             DrawVideoDetail(m_state, m_videoDetailState, m_hWnd, cx, cy, cw, ch);
-            // Note: DrawDownloadDialog is already called inside DrawVideoDetail;
-            // do NOT call it again here to avoid double-render.
             break;
         case AppPage::Channel:
             DrawChannelView(m_state, m_channelState, "Channel", cx, cy, cw, ch);
@@ -695,7 +708,6 @@ void MainWindow::DrawStatusBar(float w, float h) {
         ImGuiWindowFlags_NoBringToFrontOnFocus);
     ImGui::PopStyleColor();
     ImGui::PopStyleVar();
-    // Top border line
     ImGui::GetWindowDrawList()->AddLine(
         ImVec2(0, 0), ImVec2(w, 0),
         IM_COL32(255, 255, 255, 18), 1.f);
