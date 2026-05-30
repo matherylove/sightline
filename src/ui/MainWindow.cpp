@@ -73,9 +73,9 @@ bool MainWindow::Create() {
     wc.lpszClassName = L"SightlineVisualizer";
     if (!RegisterClassEx(&wc)) return false;
 
-    m_hWnd = CreateWindowEx(0, L"SightlineVisualizer", L"Sightline Visualizer",
+    m_hWnd = CreateWindowEx(0, L"SightlineVisualizer", L"Sightline",
         WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT,
-        960, 640, NULL, NULL, hInst, NULL);
+        1100, 680, NULL, NULL, hInst, NULL);
     if (!m_hWnd) return false;
 
     if (!InitD3D()) {
@@ -153,6 +153,7 @@ static void LoadUIFont() {
         0,
     };
     const char* kCandidates[] = {
+        "C:/Windows/Fonts/segoeui.ttf",
         "C:/Windows/Fonts/verdana.ttf",
         "C:/Windows/Fonts/tahoma.ttf",
         "C:/Windows/Fonts/arial.ttf",
@@ -168,7 +169,7 @@ static void LoadUIFont() {
         DWORD attr = GetFileAttributesA(kCandidates[i]);
         if (attr == INVALID_FILE_ATTRIBUTES || (attr & FILE_ATTRIBUTE_DIRECTORY))
             continue;
-        baseFont = io.Fonts->AddFontFromFileTTF(kCandidates[i], 14.0f, &cfgBase, kBaseRanges);
+        baseFont = io.Fonts->AddFontFromFileTTF(kCandidates[i], 15.0f, &cfgBase, kBaseRanges);
         if (baseFont) {
             CTLogger::LogC('I', "[Font] Loaded base font: %s", kCandidates[i]);
             break;
@@ -218,44 +219,45 @@ void MainWindow::ApplyTheme() {
     LoadUIFont();
 
     ImGuiStyle& s = ImGui::GetStyle();
-    s.WindowRounding    = 4.0f;
-    s.FrameRounding     = 4.0f;
-    s.ScrollbarRounding = 4.0f;
-    s.GrabRounding      = 4.0f;
-    s.TabRounding       = 3.0f;
-    s.ChildRounding     = 4.0f;
-    s.PopupRounding     = 4.0f;
+    s.WindowRounding    = 6.0f;
+    s.FrameRounding     = 5.0f;
+    s.ScrollbarRounding = 5.0f;
+    s.GrabRounding      = 5.0f;
+    s.TabRounding       = 4.0f;
+    s.ChildRounding     = 5.0f;
+    s.PopupRounding     = 5.0f;
     s.FramePadding      = ImVec2(10.0f, 6.0f);
-    s.ItemSpacing       = ImVec2(8.0f, 8.0f);
+    s.ItemSpacing       = ImVec2(8.0f, 6.0f);
     s.ItemInnerSpacing  = ImVec2(6.0f, 6.0f);
     s.CellPadding       = ImVec2(6.0f, 4.0f);
-    s.ScrollbarSize     = 8.0f;
+    s.ScrollbarSize     = 6.0f;
     s.WindowBorderSize  = 0.0f;
-    s.FrameBorderSize   = 1.0f;
+    s.FrameBorderSize   = 0.0f;  // no frame borders — cleaner look
     s.ButtonTextAlign   = ImVec2(0.5f, 0.5f);
+    s.WindowPadding     = ImVec2(0.0f, 0.0f);
 
     ImVec4* c = s.Colors;
     c[ImGuiCol_WindowBg]             = Theme::COL_BG;
     c[ImGuiCol_ChildBg]              = Theme::COL_CARD;
     c[ImGuiCol_PopupBg]              = Theme::COL_CARD;
-    c[ImGuiCol_Border]               = Theme::COL_CONTRAST_V4;
-    c[ImGuiCol_FrameBg]              = Theme::COL_CONTRAST_V4;
-    c[ImGuiCol_FrameBgHovered]       = Theme::COL_SURFACE2;
+    c[ImGuiCol_Border]               = ImVec4(1,1,1,0.07f);
+    c[ImGuiCol_FrameBg]              = ImVec4(0.14f,0.14f,0.14f,1.f);
+    c[ImGuiCol_FrameBgHovered]       = ImVec4(0.20f,0.20f,0.20f,1.f);
     c[ImGuiCol_FrameBgActive]        = Theme::COL_ACCENT_SOFT;
     c[ImGuiCol_TitleBg]              = Theme::COL_BG;
     c[ImGuiCol_TitleBgActive]        = Theme::COL_BG;
     c[ImGuiCol_MenuBarBg]            = Theme::COL_CARD;
-    c[ImGuiCol_ScrollbarBg]          = Theme::COL_BG;
-    c[ImGuiCol_ScrollbarGrab]        = Theme::COL_CONTRAST_V4;
-    c[ImGuiCol_ScrollbarGrabHovered] = Theme::COL_SURFACE2;
-    c[ImGuiCol_ScrollbarGrabActive]  = Theme::COL_CONTRAST_V4;
-    c[ImGuiCol_Button]               = Theme::COL_CONTRAST_V4;
-    c[ImGuiCol_ButtonHovered]        = Theme::COL_ACCENT_V4;
-    c[ImGuiCol_ButtonActive]         = Theme::COL_ACCENT_HOV_V4;
+    c[ImGuiCol_ScrollbarBg]          = ImVec4(0,0,0,0);
+    c[ImGuiCol_ScrollbarGrab]        = ImVec4(0.30f,0.30f,0.30f,1.f);
+    c[ImGuiCol_ScrollbarGrabHovered] = ImVec4(0.40f,0.40f,0.40f,1.f);
+    c[ImGuiCol_ScrollbarGrabActive]  = Theme::COL_ACCENT_V4;
+    c[ImGuiCol_Button]               = ImVec4(0.18f,0.18f,0.18f,1.f);
+    c[ImGuiCol_ButtonHovered]        = ImVec4(0.26f,0.26f,0.26f,1.f);
+    c[ImGuiCol_ButtonActive]         = Theme::COL_ACCENT_V4;
     c[ImGuiCol_Header]               = Theme::COL_SELECTED;
     c[ImGuiCol_HeaderHovered]        = Theme::COL_ACCENT_SOFT;
     c[ImGuiCol_HeaderActive]         = Theme::COL_ACCENT_V4;
-    c[ImGuiCol_Separator]            = Theme::COL_CONTRAST_V4;
+    c[ImGuiCol_Separator]            = ImVec4(1,1,1,0.07f);
     c[ImGuiCol_Text]                 = Theme::COL_TEXT;
     c[ImGuiCol_TextDisabled]         = Theme::COL_TEXT_DIM_V4;
     c[ImGuiCol_NavHighlight]         = Theme::COL_ACCENT_V4;
@@ -411,15 +413,16 @@ void MainWindow::DrawTopBar(float w) {
     const float TOP_H  = 48.0f;
     const float BH     = 28.0f;
     const float BTN_W  = 40.0f;
-    const float SRCH_W = 200.0f;
+    const float SRCH_W = 260.0f;
     const float SBTN_W = 76.0f;
     const float GAP    = 6.0f;
     const float R_PAD  = 8.0f;
-    const float BLOCK_W = SRCH_W + GAP + SBTN_W + R_PAD;
+    const float BLOCK_W = SRCH_W + GAP + SBTN_W + R_PAD + 16.f;
 
     ImGui::SetNextWindowPos(ImVec2(0, 0));
     ImGui::SetNextWindowSize(ImVec2(w, TOP_H));
     ImGui::PushStyleColor(ImGuiCol_WindowBg, Theme::COL_CARD);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
     ImGui::Begin("##topbar", NULL,
         ImGuiWindowFlags_NoTitleBar  |
         ImGuiWindowFlags_NoResize    |
@@ -427,20 +430,31 @@ void MainWindow::DrawTopBar(float w) {
         ImGuiWindowFlags_NoScrollbar |
         ImGuiWindowFlags_NoBringToFrontOnFocus);
     ImGui::PopStyleColor();
+    ImGui::PopStyleVar();
+
+    // Subtle bottom border line
+    ImGui::GetWindowDrawList()->AddLine(
+        ImVec2(0, TOP_H - 1), ImVec2(w, TOP_H - 1),
+        IM_COL32(255, 255, 255, 18), 1.f);
 
     float itemY = (TOP_H - BH) * 0.5f;
 
+    // Home button (navigates to Main page)
     ImGui::SetCursorPos(ImVec2(R_PAD, itemY));
     ImGui::PushStyleColor(ImGuiCol_Button,        ImVec4(0,0,0,0));
-    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, Theme::COL_CONTRAST_V4);
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(1,1,1,0.08f));
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive,  ImVec4(1,1,1,0.14f));
+    ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 5.f);
     if (ImGui::Button(ICON_FA_HOUSE, ImVec2(BTN_W, BH))) {
-        m_state.activePage = AppPage::Settings;
+        m_state.activePage = AppPage::Main;
         m_state.drawerOpen = false;
     }
-    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Settings");
-    ImGui::PopStyleColor(2);
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Home");
+    ImGui::PopStyleColor(3);
+    ImGui::PopStyleVar();
 
-    const char* pageTitle = "Sightline Visualizer";
+    // Page title — neutral COL_TEXT (not accent)
+    const char* pageTitle = "Sightline";
     if (m_state.activePage == AppPage::Search)      pageTitle = "Search";
     if (m_state.activePage == AppPage::Settings)    pageTitle = "Settings";
     if (m_state.activePage == AppPage::Channel)     pageTitle = "Channel";
@@ -462,14 +476,16 @@ void MainWindow::DrawTopBar(float w) {
     if (titleX < leftEdge) titleX = leftEdge;
     float textH  = ImGui::GetTextLineHeight();
     ImGui::SetCursorPos(ImVec2(titleX, (TOP_H - textH) * 0.5f));
-    ImGui::TextColored(Theme::COL_ACCENT_V4, "%s", truncTitle.c_str());
+    // Use plain text colour — accent is reserved for interactive elements
+    ImGui::TextColored(Theme::COL_TEXT, "%s", truncTitle.c_str());
 
+    // Search block
     float blockX = w - BLOCK_W;
     ImGui::SetCursorPos(ImVec2(blockX, itemY));
-    ImGui::PushStyleColor(ImGuiCol_FrameBg,        Theme::COL_CONTRAST_V4);
-    ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, Theme::COL_SURFACE2);
+    ImGui::PushStyleColor(ImGuiCol_FrameBg,        ImVec4(0.14f,0.14f,0.14f,1.f));
+    ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, ImVec4(0.20f,0.20f,0.20f,1.f));
     ImGui::PushStyleColor(ImGuiCol_FrameBgActive,  Theme::COL_ACCENT_SOFT);
-    ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 4.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 5.0f);
     ImGui::SetNextItemWidth(SRCH_W);
 
     bool searching = m_searching.load();
@@ -483,8 +499,10 @@ void MainWindow::DrawTopBar(float w) {
 
     ImGui::SameLine(0, GAP);
     ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(10.0f, 6.0f));
+    ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 5.0f);
     ImGui::PushStyleColor(ImGuiCol_Button,        Theme::COL_ACCENT_V4);
     ImGui::PushStyleColor(ImGuiCol_ButtonHovered, Theme::COL_ACCENT_HOV_V4);
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive,  Theme::COL_ACCENT_HOV_V4);
     if (searching) ImGui::BeginDisabled();
     const char* searchBtnLabel = searching
         ? ICON_FA_MAGNIFYING_GLASS " ..."
@@ -492,8 +510,8 @@ void MainWindow::DrawTopBar(float w) {
     if ((ImGui::Button(searchBtnLabel, ImVec2(SBTN_W + 16.f, BH)) || enter) && !searching)
         DoSearch();
     if (searching) ImGui::EndDisabled();
-    ImGui::PopStyleColor(2);
-    ImGui::PopStyleVar();
+    ImGui::PopStyleColor(3);
+    ImGui::PopStyleVar(2);
 
     ImGui::End();
 }
@@ -517,13 +535,15 @@ void MainWindow::DrawDrawer(float h) {
     ImGui::SetNextWindowPos(ImVec2(0, 48));
     ImGui::SetNextWindowSize(ImVec2(drawerW, h - 48));
     ImGui::SetNextWindowBgAlpha(0.97f);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(8.f, 8.f));
     ImGui::Begin("##drawer", NULL,
         ImGuiWindowFlags_NoTitleBar  |
         ImGuiWindowFlags_NoResize    |
         ImGuiWindowFlags_NoMove      |
         ImGuiWindowFlags_NoScrollbar);
+    ImGui::PopStyleVar();
     ImGui::PushStyleColor(ImGuiCol_Text, Theme::COL_ACCENT_V4);
-    ImGui::Text(" Sightline Visualizer");
+    ImGui::Text(" Sightline");
     ImGui::PopStyleColor();
     ImGui::TextColored(Theme::COL_TEXT_DIM_V4, " v0.1.0");
     ImGui::Separator(); ImGui::Spacing();
@@ -550,9 +570,13 @@ void MainWindow::DrawContent(float, float topH, float w, float h) {
         m_state.pendingRelated.hThread = NULL;
     }
 
+    // GUI-FIXES-11: reset playRequested immediately after kicking the resolver.
+    // Without this, DoResolveStream was called every frame while streamResolving
+    // was already true, and the flag never cleared — stream stayed at "Resolving".
     if (m_state.playRequested && !m_state.pendingPlay.videoId.empty()) {
         CTLogger::LogC('I', "[MainWindow] playRequested -> videoId=%s",
             m_state.pendingPlay.videoId.c_str());
+        m_state.playRequested = false;  // CRITICAL: clear before DoResolveStream
         DoResolveStream(m_state.pendingPlay.videoId);
     }
 
@@ -619,10 +643,9 @@ void MainWindow::DrawContent(float, float topH, float w, float h) {
                 m_statusMsg, m_searching.load(), cx, cy, cw, ch);
             break;
         case AppPage::VideoDetail:
-            // FIX: corrected function name DrawVideoDetail (was DrawVideoDetailView)
-            // and removed extra args (currentVideoTitle, bool) that don't exist in the signature.
             DrawVideoDetail(m_state, m_videoDetailState, m_hWnd, cx, cy, cw, ch);
-            DrawDownloadDialog(m_videoDetailState.dlDialog, m_hWnd);
+            // Note: DrawDownloadDialog is already called inside DrawVideoDetail;
+            // do NOT call it again here to avoid double-render.
             break;
         case AppPage::Channel:
             DrawChannelView(m_state, m_channelState, "Channel", cx, cy, cw, ch);
@@ -633,18 +656,20 @@ void MainWindow::DrawContent(float, float topH, float w, float h) {
         case AppPage::About: {
             ImGui::SetNextWindowPos(ImVec2(cx, cy));
             ImGui::SetNextWindowSize(ImVec2(cw, ch));
+            ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(16.f, 16.f));
             ImGui::Begin("##about", NULL,
                 ImGuiWindowFlags_NoTitleBar  |
                 ImGuiWindowFlags_NoResize    |
                 ImGuiWindowFlags_NoMove      |
                 ImGuiWindowFlags_NoBringToFrontOnFocus);
+            ImGui::PopStyleVar();
             ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0,0,0,0));
             if (ImGui::Button(ICON_FA_CHEVRON_LEFT "  Back")) m_state.activePage = AppPage::Main;
             ImGui::PopStyleColor();
             ImGui::Separator();
             ImGui::Spacing();
             ImGui::PushStyleColor(ImGuiCol_Text, Theme::COL_ACCENT_V4);
-            ImGui::Text("Sightline Visualizer");
+            ImGui::Text("Sightline");
             ImGui::PopStyleColor();
             ImGui::TextColored(Theme::COL_TEXT_DIM_V4, "Version 0.1.0");
             ImGui::Spacing(); ImGui::Separator(); ImGui::Spacing();
@@ -657,10 +682,11 @@ void MainWindow::DrawContent(float, float topH, float w, float h) {
 }
 
 void MainWindow::DrawStatusBar(float w, float h) {
-    const float BAR_H = 22.0f;
+    const float BAR_H = 24.0f;
     ImGui::SetNextWindowPos(ImVec2(0, h - BAR_H));
     ImGui::SetNextWindowSize(ImVec2(w, BAR_H));
     ImGui::PushStyleColor(ImGuiCol_WindowBg, Theme::COL_CARD);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
     ImGui::Begin("##statusbar", NULL,
         ImGuiWindowFlags_NoTitleBar  |
         ImGuiWindowFlags_NoResize    |
@@ -668,8 +694,14 @@ void MainWindow::DrawStatusBar(float w, float h) {
         ImGuiWindowFlags_NoScrollbar |
         ImGuiWindowFlags_NoBringToFrontOnFocus);
     ImGui::PopStyleColor();
-    ImGui::SetCursorPosY((BAR_H - ImGui::GetTextLineHeight()) * 0.5f);
-    ImGui::TextColored(Theme::COL_TEXT_DIM_V4, " %ls", m_statusMsg.c_str());
+    ImGui::PopStyleVar();
+    // Top border line
+    ImGui::GetWindowDrawList()->AddLine(
+        ImVec2(0, 0), ImVec2(w, 0),
+        IM_COL32(255, 255, 255, 18), 1.f);
+    float textH = ImGui::GetTextLineHeight();
+    ImGui::SetCursorPos(ImVec2(10.f, (BAR_H - textH) * 0.5f));
+    ImGui::TextColored(Theme::COL_TEXT_DIM_V4, "%ls", m_statusMsg.c_str());
     ImGui::End();
 }
 
@@ -730,7 +762,7 @@ void MainWindow::Run() {
         float w = (float)(rc.right  - rc.left);
         float h = (float)(rc.bottom - rc.top);
         const float TOP_H    = 48.0f;
-        const float STATUS_H = 22.0f;
+        const float STATUS_H = 24.0f;
 
         DrawTopBar(w);
         DrawDrawer(h - STATUS_H);
@@ -741,7 +773,7 @@ void MainWindow::Run() {
         m_pDevice->SetRenderState(D3DRS_ZENABLE, FALSE);
         m_pDevice->SetRenderState(D3DRS_ALPHABLENDENABLE, FALSE);
         m_pDevice->SetRenderState(D3DRS_SCISSORTESTENABLE, FALSE);
-        m_pDevice->Clear(0, NULL, D3DCLEAR_TARGET, 0xFF000000, 1.0f, 0);
+        m_pDevice->Clear(0, NULL, D3DCLEAR_TARGET, 0xFF111111, 1.0f, 0);
         if (m_pDevice->BeginScene() == D3D_OK) {
             ImGui::Render();
             ImGui_ImplDX9_RenderDrawData(ImGui::GetDrawData());
