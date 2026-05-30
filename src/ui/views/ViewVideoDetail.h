@@ -36,6 +36,8 @@
 // GUI-FIXES-8: fix PlayerRequest quality fields: use vp9Qualities vector
 //              instead of non-existent qualityLabels/qualityVideoUrls/qualityAudioUrls.
 // GUI-FIXES-9: fix ThumbnailCache::Get — called via s_instance (non-static method).
+// GUI-FIXES-10: fix ImTextureID ternary — nullptr incompatible with ImU64 on
+//               GCC/MinGW; replaced nullptr with (ImTextureID)0.
 
 #include "../AppState.h"
 #include "../Widgets.h"
@@ -622,10 +624,12 @@ static void VD_DrawRelatedPanel(AppState& state, VideoDetailState& vds,
         }
 
         // Thumbnail — use s_instance to call the non-static Get()
+        // GUI-FIXES-10: use (ImTextureID)0 instead of nullptr — ImTextureID is
+        // ImU64 on this config, which is incompatible with std::nullptr_t on GCC.
         ImVec2 thumbTL = {ImGui::GetWindowPos().x + PAD, ImGui::GetWindowPos().y + iy};
         ImTextureID tid = ThumbnailCache::s_instance
                           ? (ImTextureID)ThumbnailCache::s_instance->Get(it.videoId)
-                          : nullptr;
+                          : (ImTextureID)0;
         if (tid) {
             ImGui::GetWindowDrawList()->AddImage(tid, thumbTL,
                 {thumbTL.x+THUMB_W, thumbTL.y+THUMB_H});
