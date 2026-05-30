@@ -35,6 +35,7 @@
 //              son std::string (no int) — comparaciones y formato corregidos.
 // GUI-FIXES-8: fix PlayerRequest quality fields: use vp9Qualities vector
 //              instead of non-existent qualityLabels/qualityVideoUrls/qualityAudioUrls.
+// GUI-FIXES-9: fix ThumbnailCache::Get — called via s_instance (non-static method).
 
 #include "../AppState.h"
 #include "../Widgets.h"
@@ -620,9 +621,11 @@ static void VD_DrawRelatedPanel(AppState& state, VideoDetailState& vds,
             state.activePage = AppPage::VideoDetail;
         }
 
-        // Thumbnail
+        // Thumbnail — use s_instance to call the non-static Get()
         ImVec2 thumbTL = {ImGui::GetWindowPos().x + PAD, ImGui::GetWindowPos().y + iy};
-        ImTextureID tid = ThumbnailCache::Get(it.videoId);
+        ImTextureID tid = ThumbnailCache::s_instance
+                          ? (ImTextureID)ThumbnailCache::s_instance->Get(it.videoId)
+                          : nullptr;
         if (tid) {
             ImGui::GetWindowDrawList()->AddImage(tid, thumbTL,
                 {thumbTL.x+THUMB_W, thumbTL.y+THUMB_H});
