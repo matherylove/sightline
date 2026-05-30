@@ -33,6 +33,8 @@
 //              en descripción reforzada.
 // GUI-FIXES-7: fix CommentItem fields: authorName (no author), likeCount/replyCount
 //              son std::string (no int) — comparaciones y formato corregidos.
+// GUI-FIXES-8: fix PlayerRequest quality fields: use vp9Qualities vector
+//              instead of non-existent qualityLabels/qualityVideoUrls/qualityAudioUrls.
 
 #include "../AppState.h"
 #include "../Widgets.h"
@@ -532,19 +534,12 @@ static void VD_DrawCommentsTab(AppState& state, VideoDetailState& vds,
         ImGui::PushStyleColor(ImGuiCol_Text, Theme::COL_TEXT);
         ImGui::TextWrapped("%s", c.text.c_str());
         ImGui::PopStyleColor();
-        // Likes / replies — likeCount and replyCount are std::string
-        bool hasLikes   = !c.likeCount.empty()  && c.likeCount  != "0";
-        bool hasReplies = !c.replyCount.empty() && c.replyCount != "0";
-        if (hasLikes || hasReplies) {
+        // Likes — likeCount is std::string
+        bool hasLikes = !c.likeCount.empty() && c.likeCount != "0";
+        if (hasLikes) {
             ImGui::SetCursorPosX(PAD + avatarSz + 6.f);
             ImGui::PushStyleColor(ImGuiCol_Text, Theme::COL_TEXT_FAINT);
-            if (hasLikes && hasReplies)
-                ImGui::Text("\xf0\x9f\x91\x8d %s  \xf0\x9f\x92\xac %s",
-                            c.likeCount.c_str(), c.replyCount.c_str());
-            else if (hasLikes)
-                ImGui::Text("\xf0\x9f\x91\x8d %s", c.likeCount.c_str());
-            else
-                ImGui::Text("\xf0\x9f\x92\xac %s", c.replyCount.c_str());
+            ImGui::Text("\xf0\x9f\x91\x8d %s", c.likeCount.c_str());
             ImGui::PopStyleColor();
         }
         ImGui::SetCursorPosX(PAD);
@@ -600,7 +595,7 @@ static void VD_DrawRelatedPanel(AppState& state, VideoDetailState& vds,
 
     const float THUMB_W=96.f, THUMB_H=54.f, ITEM_H=66.f;
     const float itemW = RW - PAD * 2.f;
-    // [FIX] Wrap pos ajustado al ancho real del bloque de texto (excluye thumbnail + gap)
+    // Wrap pos ajustado al ancho real del bloque de texto (excluye thumbnail + gap)
     const float textBlockW = RW - PAD - THUMB_W - 8.f;
 
     for (auto& it : state.pendingRelated.items) {
@@ -620,7 +615,6 @@ static void VD_DrawRelatedPanel(AppState& state, VideoDetailState& vds,
             state.pendingPlay.videoId    = it.videoId;
             state.pendingPlay.title      = it.title;
             state.pendingPlay.channelName= it.channelName;
-            state.pendingPlay.channelId  = it.channelId;
             state.pendingPlay.viewCount  = it.viewCount;
             state.pendingPlay.duration   = it.duration;
             state.activePage = AppPage::VideoDetail;
@@ -628,7 +622,7 @@ static void VD_DrawRelatedPanel(AppState& state, VideoDetailState& vds,
 
         // Thumbnail
         ImVec2 thumbTL = {ImGui::GetWindowPos().x + PAD, ImGui::GetWindowPos().y + iy};
-        ImTextureID tid = ThumbnailCache::Get(it.videoId, it.thumbnailUrl);
+        ImTextureID tid = ThumbnailCache::Get(it.videoId);
         if (tid) {
             ImGui::GetWindowDrawList()->AddImage(tid, thumbTL,
                 {thumbTL.x+THUMB_W, thumbTL.y+THUMB_H});
@@ -637,7 +631,7 @@ static void VD_DrawRelatedPanel(AppState& state, VideoDetailState& vds,
                 {thumbTL.x+THUMB_W, thumbTL.y+THUMB_H}, IM_COL32(30,30,30,255), 4.f);
         }
 
-        // [FIX] Text block — PushTextWrapPos ajustado al bloque de texto, no al panel entero
+        // Text block — PushTextWrapPos ajustado al bloque de texto, no al panel entero
         float tx = PAD + THUMB_W + 8.f;
         ImGui::SetCursorPos({tx, iy + 2.f});
         ImGui::PushTextWrapPos(ImGui::GetWindowPos().x + PAD + THUMB_W + 8.f + textBlockW);
@@ -645,7 +639,7 @@ static void VD_DrawRelatedPanel(AppState& state, VideoDetailState& vds,
         ImGui::TextWrapped("%s", it.title.c_str());
         ImGui::PopStyleColor();
 
-        // [FIX] Channel + views: COL_TEXT_FAINT, visually smaller via ItemSpacing reduction
+        // Channel + views: COL_TEXT_FAINT
         ImGui::SetCursorPosX(tx);
         ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2{4.f, 1.f});
         ImGui::PushStyleColor(ImGuiCol_Text, Theme::COL_TEXT_FAINT);
@@ -769,19 +763,21 @@ static void DrawVideoDetail(AppState& state, VideoDetailState& vds,
             q.audioUrl=state.pendingPlay.audioUrl;
             vds.qualities.push_back(q);
 
-            // Additional quality options from pendingPlay
-            std::vector<QualityOption> opts;
-            for (int qi=0;qi<(int)state.pendingPlay.qualityLabels.size();qi++) {
-                QualityOption o;
-                o.label    = state.pendingPlay.qualityLabels[qi];
-                o.videoUrl = qi<(int)state.pendingPlay.qualityVideoUrls.size()
-                                ? state.pendingPlay.qualityVideoUrls[qi] : "";
-                o.audioUrl = qi<(int)state.pendingPlay.qualityAudioUrls.size()
-                                ? state.pendingPlay.qualityAudioUrls[qi] : "";
-                if (!o.videoUrl.empty()) opts.push_back(o);
+            // Additional quality options from pendingPlay.vp9Qualities
+            if (!state.pendingPlay.vp9Qualities.empty()) {
+                std::vector<QualityOption> opts;
+                for (const auto& vq : state.pendingPlay.vp9Qualities) {
+                    QualityOption o;
+                    o.label    = vq.label;
+                    o.videoUrl = vq.videoUrl;
+                    o.audioUrl = vq.audioUrl;
+                    if (!o.videoUrl.empty()) opts.push_back(o);
+                }
+                if (!opts.empty()) VD_ApplyVP9Qualities(vds, opts);
+                else VD_SyncDlDialogQualities(vds);
+            } else {
+                VD_SyncDlDialogQualities(vds);
             }
-            if (!opts.empty()) VD_ApplyVP9Qualities(vds, opts);
-            else VD_SyncDlDialogQualities(vds);
         }
     }
 
@@ -963,11 +959,9 @@ static void DrawVideoDetail(AppState& state, VideoDetailState& vds,
 
     // -----------------------------------------------------------------------
     // TRANSPORT ROW — FA6 icons
-    // [FIX] Play/Pause button same width as siblings (BW), no extra +16
     // -----------------------------------------------------------------------
     float ctrRowY;
     {
-        // [FIX] All transport buttons share the same width BW for symmetry
         const float BW=BH+2.f, G=4.f;
         ctrRowY=ImGui::GetCursorPosY();
         ImGui::SetCursorPos({PAD,ctrRowY+(CTR_H-BH)*.5f});
@@ -985,7 +979,6 @@ static void DrawVideoDetail(AppState& state, VideoDetailState& vds,
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("-10s");
         ImGui::SameLine(0,G);
 
-        // [FIX] Play/Pause same width BW — no special wider size
         ImGui::PushStyleColor(ImGuiCol_Button,       isPlaying?ImVec4{.15f,.15f,.15f,1}:Theme::COL_ACCENT_V4);
         ImGui::PushStyleColor(ImGuiCol_ButtonHovered,Theme::COL_ACCENT_V4);
         const char* playIcon = isPlaying ? ICON_FA_PAUSE : ICON_FA_PLAY;
@@ -1007,7 +1000,7 @@ static void DrawVideoDetail(AppState& state, VideoDetailState& vds,
         ImGui::PopStyleVar();
         ImGui::PopStyleColor(3);
 
-        // [FIX] Status dot — 16px right margin before volume block, no overlap
+        // Status dot
         ImGui::SameLine(0, 16);
         {
             ImU32 dc=IM_COL32(90,90,90,255); const char* dt="Idle";
@@ -1029,8 +1022,7 @@ static void DrawVideoDetail(AppState& state, VideoDetailState& vds,
     }
 
     // -----------------------------------------------------------------------
-    // Volume — speaker icon + slim slider (FrameRounding=full, no frame border)
-    // right-aligned block: [vol icon][vol slider][quality combo]
+    // Volume + Quality combo
     // -----------------------------------------------------------------------
     const float VOL_W=80.f, QUAL_W=130.f, MG=6.f;
     float volRowY = ctrRowY+(CTR_H-BH)*.5f;
@@ -1050,14 +1042,13 @@ static void DrawVideoDetail(AppState& state, VideoDetailState& vds,
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("Mute / Unmute");
     ImGui::PopStyleColor(3);
     ImGui::SameLine(0, 2);
-    // [FIX] Volume slider styled like seekbar: thin track, rounded, no square thumb frame
     ImGui::PushStyleColor(ImGuiCol_SliderGrab,      Theme::COL_ACCENT_V4);
     ImGui::PushStyleColor(ImGuiCol_SliderGrabActive,Theme::COL_ACCENT_HOV_V4);
     ImGui::PushStyleColor(ImGuiCol_FrameBg,         ImVec4{0.22f,0.22f,0.22f,1.f});
     ImGui::PushStyleColor(ImGuiCol_FrameBgHovered,  ImVec4{0.28f,0.28f,0.28f,1.f});
-    ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 99.f);   // pill-shape track
-    ImGui::PushStyleVar(ImGuiStyleVar_GrabRounding,  99.f);   // round grab
-    ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 0.f);  // no border on track
+    ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 99.f);
+    ImGui::PushStyleVar(ImGuiStyleVar_GrabRounding,  99.f);
+    ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 0.f);
     ImGui::PushStyleVar(ImGuiStyleVar_GrabMinSize, 10.f);
     ImGui::SetNextItemWidth(VOL_W);
     int vol=vds.volume;
@@ -1068,7 +1059,7 @@ static void DrawVideoDetail(AppState& state, VideoDetailState& vds,
         ImGui::SetTooltip("Volume: %d%%", vds.volume);
     ImGui::PopStyleVar(4);
     ImGui::PopStyleColor(4);
-    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2{MG, 0.f}); // consistent vol↔quality gap
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2{MG, 0.f});
     ImGui::SameLine(0,MG);
     ImGui::PopStyleVar();
 
@@ -1079,7 +1070,7 @@ static void DrawVideoDetail(AppState& state, VideoDetailState& vds,
         ImGui::PushStyleColor(ImGuiCol_FrameBg,       Theme::COL_SURFACE2);
         ImGui::PushStyleColor(ImGuiCol_FrameBgHovered,Theme::COL_CONTRAST_V4);
         ImGui::PushStyleColor(ImGuiCol_PopupBg,       Theme::COL_CARD);
-        ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2{8.f, 3.f}); // arrow breathing room
+        ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2{8.f, 3.f});
         ImGui::SetNextItemWidth(QUAL_W);
         if (ImGui::BeginCombo("##qual",cur)) {
             for (int qi=0;qi<(int)vds.qualities.size();qi++) {
@@ -1094,7 +1085,7 @@ static void DrawVideoDetail(AppState& state, VideoDetailState& vds,
             }
             ImGui::EndCombo();
         }
-        ImGui::PopStyleVar(); // FramePadding quality combo
+        ImGui::PopStyleVar();
         ImGui::PopStyleColor(3);
     }
 
@@ -1153,11 +1144,11 @@ static void DrawVideoDetail(AppState& state, VideoDetailState& vds,
             ImGuiWindowFlags_NoScrollbar|ImGuiWindowFlags_NoScrollWithMouse);
         ImGui::PopStyleColor(); ImGui::PopStyleVar();
 
-        // Tab bar — flat buttons with bottom-border accent for active, equal padding/width
+        // Tab bar
         const int NTABS=(int)VideoDetailTab::COUNT;
         float tabW=LW/(float)NTABS;
         ImGui::SetCursorPos({0,0});
-        ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2{0.f, (BH-ImGui::GetTextLineHeight())*.5f}); // equal vertical pad
+        ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2{0.f, (BH-ImGui::GetTextLineHeight())*.5f});
         for (int ti=0;ti<NTABS;ti++) {
             bool active=(vds.activeTab==(VideoDetailTab)ti);
             ImGui::PushStyleColor(ImGuiCol_Button,
@@ -1171,7 +1162,6 @@ static void DrawVideoDetail(AppState& state, VideoDetailState& vds,
             ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2{0.f,0.f});
             if (ImGui::Button(kVDTabs[ti],{tabW,BH}))
                 vds.activeTab=(VideoDetailTab)ti;
-            // Bottom-border underline for active tab
             if (active) {
                 ImVec2 pMin=ImGui::GetItemRectMin(), pMax=ImGui::GetItemRectMax();
                 ImGui::GetWindowDrawList()->AddLine(
@@ -1196,16 +1186,13 @@ static void DrawVideoDetail(AppState& state, VideoDetailState& vds,
             ImGui::SetCursorPos({PAD,PAD});
             ImGui::PushTextWrapPos(LW-PAD);
 
-            // [FIX] Title — plain TextWrapped, no PushFont/PopFont to avoid
-            // Missing PopFont() assert. COL_TEXT is already default text colour.
             if (!vds.title.empty()) {
                 ImGui::PushStyleColor(ImGuiCol_Text, Theme::COL_TEXT);
                 ImGui::TextWrapped("%s", vds.title.c_str());
                 ImGui::PopStyleColor();
-                ImGui::SetCursorPosX(PAD); // [FIX] restaurar X tras TextWrapped
+                ImGui::SetCursorPosX(PAD);
             }
 
-            // Channel name — dim+secondary, clearly below title in hierarchy
             if (!vds.channelName.empty()) {
                 ImGui::SetCursorPosX(PAD);
                 ImGui::PushStyleColor(ImGuiCol_Text,         Theme::COL_TEXT_DIM_V4);
@@ -1222,20 +1209,18 @@ static void DrawVideoDetail(AppState& state, VideoDetailState& vds,
                 ImGui::PopStyleColor(3);
             }
 
-            // [FIX] Subscribe button — FramePadding simétrico {8,3} igual al quality combo
             ImGui::SetCursorPosX(PAD);
             ImGui::PushStyleColor(ImGuiCol_Button,        Theme::COL_SURFACE2);
             ImGui::PushStyleColor(ImGuiCol_ButtonHovered, Theme::COL_ACCENT_SOFT);
             ImGui::PushStyleColor(ImGuiCol_ButtonActive,  Theme::COL_ACCENT_V4);
             ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 4.f);
-            ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2{8.f, 3.f}); // [FIX] simétrico
+            ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2{8.f, 3.f});
             if (ImGui::Button(ICON_FA_BELL "  Subscribe", {120.f, BH}))
                 ImGui::SetTooltip("Subscribe not implemented");
-            ImGui::PopStyleVar(2); // FrameRounding + FramePadding
+            ImGui::PopStyleVar(2);
             ImGui::PopStyleColor(3);
 
-            // Meta line — views · duration, COL_TEXT_FAINT (tertiary), margin-top via Dummy
-            ImGui::Dummy({0, 2.f}); // explicit margin-top
+            ImGui::Dummy({0, 2.f});
             ImGui::SetCursorPosX(PAD);
             std::string meta;
             if (!vds.viewCount.empty()) meta += vds.viewCount;
@@ -1243,21 +1228,19 @@ static void DrawVideoDetail(AppState& state, VideoDetailState& vds,
             if (!meta.empty())
                 ImGui::TextColored(Theme::COL_TEXT_FAINT, "%s", meta.c_str());
 
-            // Separator after meta, before description body
-            ImGui::Dummy({0, 4.f}); // margin before separator
+            ImGui::Dummy({0, 4.f});
             ImGui::SetCursorPosX(PAD);
             ImGui::PushStyleColor(ImGuiCol_Separator,ImVec4{1,1,1,0.10f});
             ImGui::Separator();
             ImGui::PopStyleColor();
             ImGui::Spacing();
 
-            // [FIX] Description body — SetCursorPosX(PAD) antes y después de TextWrapped
             if (!vds.description.empty()) {
                 ImGui::SetCursorPosX(PAD);
                 ImGui::PushStyleColor(ImGuiCol_Text, Theme::COL_TEXT_DIM_V4);
                 ImGui::TextWrapped("%s", vds.description.c_str());
                 ImGui::PopStyleColor();
-                ImGui::SetCursorPosX(PAD); // [FIX] restaurar X tras wrap
+                ImGui::SetCursorPosX(PAD);
             }
             ImGui::PopTextWrapPos();
         }
@@ -1271,10 +1254,6 @@ static void DrawVideoDetail(AppState& state, VideoDetailState& vds,
 
     // =====================================================================
     // RIGHT PANEL (Up Next)
-    // [FIX] Single search bar only — removed the duplicate input that appeared
-    // because the sidebar was rendering both a per-panel search and the main
-    // top-bar search mirror. Now sidebar has exactly ONE local search field.
-    // Header height accounting updated to match (56px -> 52px).
     // =====================================================================
     if (wide) {
         float rpX=LW+PAD*2.f, rpY=0.f, rpH=h;
@@ -1285,7 +1264,6 @@ static void DrawVideoDetail(AppState& state, VideoDetailState& vds,
             ImGuiWindowFlags_NoScrollbar|ImGuiWindowFlags_NoScrollWithMouse);
         ImGui::PopStyleColor(); ImGui::PopStyleVar();
 
-        // [FIX] "Up Next" header — alineado a PAD (consistente con el cuerpo del panel)
         ImGui::SetCursorPos({PAD, 10.f});
         ImGui::PushStyleColor(ImGuiCol_Text, Theme::COL_TEXT);
         ImGui::TextUnformatted("Up Next");
@@ -1296,7 +1274,6 @@ static void DrawVideoDetail(AppState& state, VideoDetailState& vds,
         ImGui::PopStyleColor();
         ImGui::Spacing();
 
-        // Related list scroll area — header is ~30px
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding,{0,0});
         ImGui::PushStyleColor(ImGuiCol_ChildBg,{0,0,0,0});
         ImGui::BeginChild("##vd_rel",{RW,rpH-32.f},false,0);
