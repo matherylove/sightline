@@ -31,6 +31,8 @@
 //              TextWrapPos estricto en related items (título con wrap ajustado
 //              a RW-PAD-THUMB_W-8), consistencia SetCursorPosX(PAD) post-wrap
 //              en descripción reforzada.
+// GUI-FIXES-7: fix CommentItem fields: authorName (no author), likeCount/replyCount
+//              son std::string (no int) — comparaciones y formato corregidos.
 
 #include "../AppState.h"
 #include "../Widgets.h"
@@ -523,23 +525,26 @@ static void VD_DrawCommentsTab(AppState& state, VideoDetailState& vds,
         ImGui::SetCursorPosX(PAD);
         // Author
         ImGui::PushStyleColor(ImGuiCol_Text, Theme::COL_ACCENT_V4);
-        ImGui::TextUnformatted(c.author.c_str());
+        ImGui::TextUnformatted(c.authorName.c_str());
         ImGui::PopStyleColor();
         // Text
         ImGui::SetCursorPosX(PAD + avatarSz + 6.f);
         ImGui::PushStyleColor(ImGuiCol_Text, Theme::COL_TEXT);
         ImGui::TextWrapped("%s", c.text.c_str());
         ImGui::PopStyleColor();
-        // Likes / replies
-        if (c.likeCount > 0 || c.replyCount > 0) {
+        // Likes / replies — likeCount and replyCount are std::string
+        bool hasLikes   = !c.likeCount.empty()  && c.likeCount  != "0";
+        bool hasReplies = !c.replyCount.empty() && c.replyCount != "0";
+        if (hasLikes || hasReplies) {
             ImGui::SetCursorPosX(PAD + avatarSz + 6.f);
             ImGui::PushStyleColor(ImGuiCol_Text, Theme::COL_TEXT_FAINT);
-            if (c.likeCount > 0 && c.replyCount > 0)
-                ImGui::Text("\xf0\x9f\x91\x8d %d  \xf0\x9f\x92\xac %d", c.likeCount, c.replyCount);
-            else if (c.likeCount > 0)
-                ImGui::Text("\xf0\x9f\x91\x8d %d", c.likeCount);
+            if (hasLikes && hasReplies)
+                ImGui::Text("\xf0\x9f\x91\x8d %s  \xf0\x9f\x92\xac %s",
+                            c.likeCount.c_str(), c.replyCount.c_str());
+            else if (hasLikes)
+                ImGui::Text("\xf0\x9f\x91\x8d %s", c.likeCount.c_str());
             else
-                ImGui::Text("\xf0\x9f\x92\xac %d", c.replyCount);
+                ImGui::Text("\xf0\x9f\x92\xac %s", c.replyCount.c_str());
             ImGui::PopStyleColor();
         }
         ImGui::SetCursorPosX(PAD);
