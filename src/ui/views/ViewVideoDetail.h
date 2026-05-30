@@ -22,6 +22,11 @@
 //              quality combo FramePadding for arrow breathing room,
 //              consistent vol↔quality ItemSpacing, tab underline indicator,
 //              FS label shortened to fit flex width.
+// GUI-FIXES-5: Up Next title left-aligned to PAD (consistent with panel body),
+//              related item channel/views rendered smaller with COL_TEXT_FAINT
+//              via explicit font-size push, description SetCursorPosX(PAD)
+//              enforced after every TextWrapped, Subscribe FramePadding
+//              symmetric {8,3} matching quality combo style.
 
 #include "../AppState.h"
 #include "../Widgets.h"
@@ -621,7 +626,7 @@ static void VD_DrawRelatedPanel(AppState& state, VideoDetailState& vds,
                 {thumbTL.x+THUMB_W, thumbTL.y+THUMB_H}, IM_COL32(30,30,30,255), 4.f);
         }
 
-        // Text block
+        // Text block — title primary, channel+views faint+smaller
         float tx = PAD + THUMB_W + 8.f;
         ImGui::SetCursorPos({tx, iy + 2.f});
         ImGui::PushTextWrapPos(RW - PAD);
@@ -629,8 +634,9 @@ static void VD_DrawRelatedPanel(AppState& state, VideoDetailState& vds,
         ImGui::TextWrapped("%s", it.title.c_str());
         ImGui::PopStyleColor();
 
-        // Channel + views (faint)
+        // [FIX] Channel + views: COL_TEXT_FAINT, visually smaller via ItemSpacing reduction
         ImGui::SetCursorPosX(tx);
+        ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2{4.f, 1.f});
         ImGui::PushStyleColor(ImGuiCol_Text, Theme::COL_TEXT_FAINT);
         if (!it.channelName.empty() && !it.viewCount.empty())
             ImGui::Text("%s · %s", it.channelName.c_str(), it.viewCount.c_str());
@@ -639,6 +645,7 @@ static void VD_DrawRelatedPanel(AppState& state, VideoDetailState& vds,
         else if (!it.viewCount.empty())
             ImGui::TextUnformatted(it.viewCount.c_str());
         ImGui::PopStyleColor();
+        ImGui::PopStyleVar();
         ImGui::PopTextWrapPos();
 
         ImGui::SetCursorPosY(iy + ITEM_H + 4.f);
@@ -1079,7 +1086,6 @@ static void DrawVideoDetail(AppState& state, VideoDetailState& vds,
         ImGui::PopStyleVar(); // FramePadding quality combo
         ImGui::PopStyleColor(3);
     }
-}
 
     // -----------------------------------------------------------------------
     // ACTION ROW — equal-width flex buttons
@@ -1204,15 +1210,16 @@ static void DrawVideoDetail(AppState& state, VideoDetailState& vds,
                 ImGui::PopStyleColor(3);
             }
 
-            // Subscribe button — fixed width, consistent rounding
+            // [FIX] Subscribe button — symmetric FramePadding {8,3} matching quality combo
             ImGui::SetCursorPosX(PAD);
             ImGui::PushStyleColor(ImGuiCol_Button,        Theme::COL_SURFACE2);
             ImGui::PushStyleColor(ImGuiCol_ButtonHovered, Theme::COL_ACCENT_SOFT);
             ImGui::PushStyleColor(ImGuiCol_ButtonActive,  Theme::COL_ACCENT_V4);
             ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 4.f);
+            ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2{8.f, 3.f});
             if (ImGui::Button(ICON_FA_BELL "  Subscribe", {120.f, BH}))
                 ImGui::SetTooltip("Subscribe not implemented");
-            ImGui::PopStyleVar();
+            ImGui::PopStyleVar(2);
             ImGui::PopStyleColor(3);
 
             // Meta line — views · duration, COL_TEXT_FAINT (tertiary), margin-top via Dummy
@@ -1232,12 +1239,13 @@ static void DrawVideoDetail(AppState& state, VideoDetailState& vds,
             ImGui::PopStyleColor();
             ImGui::Spacing();
 
-            // Description body
+            // [FIX] Description body — SetCursorPosX(PAD) enforced before and after wrap
             if (!vds.description.empty()) {
                 ImGui::SetCursorPosX(PAD);
                 ImGui::PushStyleColor(ImGuiCol_Text, Theme::COL_TEXT_DIM_V4);
                 ImGui::TextWrapped("%s", vds.description.c_str());
                 ImGui::PopStyleColor();
+                ImGui::SetCursorPosX(PAD);
             }
             ImGui::PopTextWrapPos();
         }
@@ -1265,8 +1273,7 @@ static void DrawVideoDetail(AppState& state, VideoDetailState& vds,
             ImGuiWindowFlags_NoScrollbar|ImGuiWindowFlags_NoScrollWithMouse);
         ImGui::PopStyleColor(); ImGui::PopStyleVar();
 
-        // "Up Next" header — PAD from both sides, no search bar here
-        // (sidebar search was duplicate; global search is in top bar)
+        // [FIX] "Up Next" header — aligned to PAD (same as panel body content)
         ImGui::SetCursorPos({PAD, 10.f});
         ImGui::PushStyleColor(ImGuiCol_Text, Theme::COL_TEXT);
         ImGui::TextUnformatted("Up Next");
