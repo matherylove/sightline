@@ -736,6 +736,12 @@ void VideoSurface::mouseDoubleClickEvent(QMouseEvent *event)
         emit doubleClicked();
 }
 
+void VideoSurface::resizeEvent(QResizeEvent *event)
+{
+    QWidget::resizeEvent(event);
+    emit resized(size());
+}
+
 void VideoSurface::paintEvent(QPaintEvent *)
 {
     QPainter painter(this);

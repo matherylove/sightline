@@ -270,11 +270,13 @@ signals:
     void clicked();
     void doubleClicked();
     void undoSkipRequested();
+    void resized(const QSize &size);
 
 protected:
     void paintEvent(QPaintEvent *event);
     void mouseReleaseEvent(QMouseEvent *event);
     void mouseDoubleClickEvent(QMouseEvent *event);
+    void resizeEvent(QResizeEvent *event);
 
 private slots:
     void onToastTimeout();

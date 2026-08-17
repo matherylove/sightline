@@ -35,6 +35,9 @@ public:
     // executable. Empty when the file is not there at all.
     QString toolPath(const QString &executableName) const;
 
+    // Where the user is told to put yt-dlp.exe: beside Sightline.exe.
+    static QString binaryDirectory();
+
     static bool portableMode();
 
 private:

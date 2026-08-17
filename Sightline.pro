@@ -3,9 +3,13 @@ CONFIG += c++11
 TARGET = Sightline
 TEMPLATE = app
 
-# Windows XP needs the older subsystem version stamped into the PE header,
-# and MSVC 2017 only produces XP-compatible binaries with the v141_xp
-# toolset plus the 7.1A SDK, which the CI workflow sets up.
+# ---------------------------------------------------------------------------
+# Windows XP target
+#
+# MSVC 2017 only produces XP-compatible binaries with the v141_xp toolset, and
+# the PE subsystem version has to be stamped down to 5.1 by hand or the loader
+# on XP refuses the file outright.
+# ---------------------------------------------------------------------------
 win32-msvc* {
     QMAKE_LFLAGS_WINDOWS += /SUBSYSTEM:WINDOWS,5.01
     QMAKE_CXXFLAGS += /utf-8
@@ -19,6 +23,36 @@ win32-g++ {
 
 DEFINES += QT_DEPRECATED_WARNINGS
 
+# ---------------------------------------------------------------------------
+# FFmpeg 7.1 (N-116828-g6aafe61-Reino, XP mod, SSE)
+#
+# Linked dynamically on purpose: the DLLs sit beside the executable and can be
+# swapped for a newer XP build without rebuilding Sightline. avcodec 61,
+# avformat 61, avutil 59, swscale 8, swresample 5.
+# ---------------------------------------------------------------------------
+FFMPEG_DIR = $$PWD/third_party/ffmpeg
+INCLUDEPATH += $$FFMPEG_DIR/include
+
+win32-msvc* {
+    LIBS += -L$$FFMPEG_DIR/lib \
+        -lavcodec -lavformat -lavutil -lswscale -lswresample
+    # DirectSound is the only push-model audio API on XP: no WASAPI, and
+    # waveOut gives no play cursor for the A/V clock to read.
+    LIBS += -ldsound -lole32 -luser32
+}
+
+win32-g++ {
+    LIBS += -L$$FFMPEG_DIR/lib \
+        -lavcodec -lavformat -lavutil -lswscale -lswresample \
+        -ldsound -lole32 -luser32
+}
+
+unix {
+    # Developer convenience only; the shipping target is Windows XP.
+    CONFIG += link_pkgconfig
+    PKGCONFIG += libavcodec libavformat libavutil libswscale libswresample
+}
+
 SOURCES += \
     src/main.cpp \
     src/main_window.cpp \
@@ -31,6 +65,10 @@ SOURCES += \
     src/listening_stats.cpp \
     src/sponsorblock.cpp \
     src/ytdlp.cpp \
+    src/ytdlp_setup.cpp \
+    src/media_source.cpp \
+    src/media_decoder.cpp \
+    src/audio_sink.cpp \
     src/playback.cpp \
     src/widgets.cpp \
     src/player_page.cpp \
@@ -51,6 +89,10 @@ HEADERS += \
     src/listening_stats.h \
     src/sponsorblock.h \
     src/ytdlp.h \
+    src/ytdlp_setup.h \
+    src/media_source.h \
+    src/media_decoder.h \
+    src/audio_sink.h \
     src/playback.h \
     src/widgets.h \
     src/player_page.h \

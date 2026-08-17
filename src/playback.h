@@ -4,12 +4,15 @@
 #include <QImage>
 #include <QList>
 #include <QObject>
+#include <QSize>
 #include <QString>
 
 #include "app_settings.h"
 #include "media_types.h"
 
 class QTimer;
+class MediaDecoder;
+class AudioSink;
 
 // The playback clock and the SponsorBlock skip logic.
 //
@@ -65,10 +68,14 @@ public:
     int droppedFrames() const { return droppedFrames_; }
     double networkRate() const { return networkRate_; }
 
+    void setTargetSurfaceSize(const QSize &size);
+    bool decoding() const;
+
     void setSegments(const QList<SponsorSegment> &segments);
     QList<SponsorSegment> segments() const { return segments_; }
 
 signals:
+    void urlExpired();
     void stateChanged(PlaybackController::State state);
     void positionChanged(double seconds);
     void durationChanged(double seconds);
@@ -86,6 +93,12 @@ signals:
 
 private slots:
     void onTick();
+    void onFrameReady(const QImage &frame, double presentationTime);
+    void onDecoderOpened(int width, int height, double duration);
+    void onDecoderFailed(const QString &message);
+    void onDecoderEnded();
+    void onUrlExpired();
+    void onAudioReady();
 
 private:
     void setState(State state);
@@ -115,6 +128,12 @@ private:
     double tickAccumulator_;
 
     QTimer *clock_;
+
+    MediaDecoder *videoDecoder_;
+    MediaDecoder *audioDecoder_;
+    AudioSink *audioSink_;
+    QSize surfaceSize_;
+    int endedStreams_;
 };
 
 #endif

@@ -32,6 +32,7 @@
 #include "sponsorblock.h"
 #include "stats_page.h"
 #include "widgets.h"
+#include "ytdlp_setup.h"
 #include "ytdlp.h"
 
 MainWindow::MainWindow(QWidget *parent)
@@ -98,6 +99,9 @@ bool MainWindow::initialise(QString *error)
             this, SLOT(onSegmentSkipped(SponsorSegment::Category, double)));
     connect(playback_, SIGNAL(segmentPending(SponsorSegment::Category, double, double)),
             this, SLOT(onSegmentPending(SponsorSegment::Category, double, double)));
+    connect(playback_, SIGNAL(frameReady(QImage)), this, SLOT(onFrameReady(QImage)));
+    connect(playback_, SIGNAL(urlExpired()), this, SLOT(onUrlExpired()));
+    connect(playback_, SIGNAL(failed(QString)), this, SLOT(onPlaybackFailed(QString)));
 
     buildChrome();
     buildViews();
@@ -112,7 +116,67 @@ bool MainWindow::initialise(QString *error)
     extractor_->probe();
     showView(FeedView);
     refreshStatusBar();
+
+    // Nothing works without the extractor, so this is settled before the
+    // user hits their first "why is it not loading".
+    if (extractor_->binaryPath().isEmpty())
+        QTimer::singleShot(400, this, SLOT(onOfferYtDlpDownload()));
+
     return true;
+}
+
+void MainWindow::onOfferYtDlpDownload()
+{
+    YtDlpSetupDialog dialog(SightlinePaths::binaryDirectory(), this);
+    if (dialog.exec() != QDialog::Accepted)
+        return;
+
+    settings_.ytdlpPath = dialog.installedPath();
+    settingsStore_->save(settings_);
+    extractor_->applySettings(settings_);
+    extractor_->probe();
+    refreshStatusBar();
+}
+
+void MainWindow::onSurfaceResized(const QSize &size)
+{
+    // The scaler produces frames at exactly the surface size so the paint
+    // event is a straight blit; rescaling twice is the sort of waste these
+    // machines cannot absorb.
+    playback_->setTargetSurfaceSize(size);
+}
+
+void MainWindow::onFrameReady(const QImage &frame)
+{
+    player_->surface()->presentFrame(frame);
+    if (pip_ && pip_->isVisible())
+        pip_->surface()->presentFrame(frame);
+}
+
+void MainWindow::onPlaybackFailed(const QString &message)
+{
+    lastError_ = message;
+    statusBar_->setState(SightlineStatusBar::Degraded, QString::fromUtf8("Fallo"));
+    refreshStatusBar();
+}
+
+void MainWindow::onUrlExpired()
+{
+    // The googlevideo link died mid-playback. Re-extract and resume from
+    // where the user was, rather than showing them an I/O error.
+    if (currentVideoId_.isEmpty())
+        return;
+
+    statusBar_->setState(SightlineStatusBar::Working,
+                         QString::fromUtf8("Renovando enlace"));
+
+    VideoItem refreshed = currentVideo_;
+    refreshed.resumePosition = qint64(playback_->position());
+    library_->remember(refreshed);
+
+    if (!extractToken_.isEmpty())
+        extractor_->cancel(extractToken_);
+    extractToken_ = extractor_->extract(currentVideoId_);
 }
 
 void MainWindow::buildChrome()
@@ -257,6 +321,8 @@ void MainWindow::buildViews()
     stack_->addWidget(gridScroll_);
 
     player_ = new PlayerPage(library_, playback_, stack_);
+    connect(player_->surface(), SIGNAL(resized(QSize)),
+            this, SLOT(onSurfaceResized(QSize)));
     connect(player_, SIGNAL(playRequested(QString)), this, SLOT(onVideoActivated(QString)));
     connect(player_, SIGNAL(subscribeToggled(bool)), this, SLOT(onSubscribeToggled(bool)));
     connect(player_, SIGNAL(downloadRequested()), this, SLOT(onDownloadRequested()));

@@ -82,18 +82,22 @@ QString SightlinePaths::credentialsFile() const { return config() + QString::fro
 
 QString SightlinePaths::toolPath(const QString &executableName) const
 {
-    // tools/ first, because that is the directory the user replaces when
-    // yt-dlp needs updating and we do not want a stale copy beside the
-    // executable to win silently.
+    // Beside the executable first. That is where the user is told to drop
+    // the file and where the built-in downloader puts it, so a stale copy
+    // in a data directory must never win over the one they just placed.
     const QString candidates[] = {
-        tools() + QString::fromLatin1("/") + executableName,
-        tools() + QString::fromLatin1("/yt-dlp/") + executableName,
         QCoreApplication::applicationDirPath() + QString::fromLatin1("/") + executableName,
-        QCoreApplication::applicationDirPath() + QString::fromLatin1("/tools/") + executableName
+        QCoreApplication::applicationDirPath() + QString::fromLatin1("/tools/") + executableName,
+        tools() + QString::fromLatin1("/") + executableName
     };
     for (int i = 0; i < int(sizeof(candidates) / sizeof(candidates[0])); ++i) {
         if (QFileInfo(candidates[i]).isFile())
             return QDir::toNativeSeparators(candidates[i]);
     }
     return QString();
+}
+
+QString SightlinePaths::binaryDirectory()
+{
+    return QCoreApplication::applicationDirPath();
 }

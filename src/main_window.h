@@ -3,6 +3,8 @@
 
 #include <QHash>
 #include <QList>
+#include <QImage>
+#include <QSize>
 #include <QString>
 #include <QWidget>
 
@@ -80,6 +82,11 @@ private slots:
     void onLibraryChanged();
     void onStatusTick();
 
+    void onOfferYtDlpDownload();
+    void onFrameReady(const QImage &frame);
+    void onSurfaceResized(const QSize &size);
+    void onUrlExpired();
+    void onPlaybackFailed(const QString &message);
     void onLinkAccount();
     void onImportCsv();
     void onOpenSponsorBlockSettings();

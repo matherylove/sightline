@@ -2,6 +2,9 @@
 
 #include <QTimer>
 
+#include "audio_sink.h"
+#include "media_decoder.h"
+
 namespace {
 const int kTickMs = 100;
 }
@@ -20,16 +23,30 @@ PlaybackController::PlaybackController(QObject *parent)
       undoPosition_(0.0),
       hasUndo_(false),
       tickAccumulator_(0.0),
-      clock_(0)
+      clock_(0),
+      videoDecoder_(0), audioDecoder_(0), audioSink_(0), endedStreams_(0)
 {
     clock_ = new QTimer(this);
     clock_->setInterval(kTickMs);
     connect(clock_, SIGNAL(timeout()), this, SLOT(onTick()));
+    audioSink_ = new AudioSink(this);
 }
 
 PlaybackController::~PlaybackController()
 {
     close();
+}
+
+bool PlaybackController::decoding() const
+{
+    return videoDecoder_ != 0 || audioDecoder_ != 0;
+}
+
+void PlaybackController::setTargetSurfaceSize(const QSize &size)
+{
+    surfaceSize_ = size;
+    if (videoDecoder_)
+        videoDecoder_->setTargetSize(size);
 }
 
 void PlaybackController::applySettings(const AppSettings &settings)
@@ -85,6 +102,53 @@ void PlaybackController::open(const VideoItem &video, const MediaFormat *videoFo
     emit durationChanged(duration_);
     emit positionChanged(position_);
     emit bufferedChanged(buffered_);
+    endedStreams_ = 0;
+
+    QString error;
+
+    // Video and audio arrive as two separate files, so two decoders. Audio
+    // is opened first because it owns the clock everything else follows.
+    if (audioFormat_.hasAudio() && !audioFormat_.url.isEmpty()) {
+        audioDecoder_ = new MediaDecoder(MediaDecoder::AudioStream, this);
+        connect(audioDecoder_, SIGNAL(audioReady()), this, SLOT(onAudioReady()));
+        connect(audioDecoder_, SIGNAL(endOfStream()), this, SLOT(onDecoderEnded()));
+        connect(audioDecoder_, SIGNAL(failed(QString)), this, SLOT(onDecoderFailed(QString)));
+        connect(audioDecoder_, SIGNAL(urlExpired()), this, SLOT(onUrlExpired()));
+
+        if (audioDecoder_->openStream(audioFormat_.url, &error)) {
+            audioSink_->start(audioDecoder_->sampleRate(), audioDecoder_->channelCount());
+            audioSink_->setVolume(volume_);
+            audioDecoder_->start();
+        } else {
+            delete audioDecoder_;
+            audioDecoder_ = 0;
+        }
+    }
+
+    if (videoFormat_.hasVideo() && !videoFormat_.url.isEmpty()) {
+        videoDecoder_ = new MediaDecoder(MediaDecoder::VideoStream, this);
+        videoDecoder_->setTargetSize(surfaceSize_);
+        connect(videoDecoder_, SIGNAL(frameReady(QImage, double)),
+                this, SLOT(onFrameReady(QImage, double)));
+        connect(videoDecoder_, SIGNAL(openedStream(int, int, double)),
+                this, SLOT(onDecoderOpened(int, int, double)));
+        connect(videoDecoder_, SIGNAL(endOfStream()), this, SLOT(onDecoderEnded()));
+        connect(videoDecoder_, SIGNAL(failed(QString)), this, SLOT(onDecoderFailed(QString)));
+        connect(videoDecoder_, SIGNAL(urlExpired()), this, SLOT(onUrlExpired()));
+
+        if (videoDecoder_->openStream(videoFormat_.url, &error)) {
+            videoDecoder_->start();
+        } else {
+            delete videoDecoder_;
+            videoDecoder_ = 0;
+            emit failed(error);
+        }
+    }
+
+    if (startAt > 0.5) {
+        if (videoDecoder_) videoDecoder_->requestSeek(startAt);
+        if (audioDecoder_) audioDecoder_->requestSeek(startAt);
+    }
 
     play();
 }
@@ -92,6 +156,21 @@ void PlaybackController::open(const VideoItem &video, const MediaFormat *videoFo
 void PlaybackController::close()
 {
     clock_->stop();
+
+    if (videoDecoder_) {
+        videoDecoder_->stop();
+        delete videoDecoder_;
+        videoDecoder_ = 0;
+    }
+    if (audioDecoder_) {
+        audioDecoder_->stop();
+        delete audioDecoder_;
+        audioDecoder_ = 0;
+    }
+    if (audioSink_)
+        audioSink_->stop();
+    endedStreams_ = 0;
+
     segments_.clear();
     hasUndo_ = false;
     tickAccumulator_ = 0.0;
@@ -106,12 +185,18 @@ void PlaybackController::play()
     if (video_.id.isEmpty())
         return;
     clock_->start();
+    if (videoDecoder_) videoDecoder_->setPaused(false);
+    if (audioDecoder_) audioDecoder_->setPaused(false);
+    if (audioSink_) audioSink_->setPaused(false);
     setState(Playing);
 }
 
 void PlaybackController::pause()
 {
     clock_->stop();
+    if (videoDecoder_) videoDecoder_->setPaused(true);
+    if (audioDecoder_) audioDecoder_->setPaused(true);
+    if (audioSink_) audioSink_->setPaused(true);
     if (state_ == Playing)
         setState(Paused);
 }
@@ -137,6 +222,9 @@ void PlaybackController::seek(double seconds)
     // to is no longer where the user was.
     hasUndo_ = false;
 
+    if (videoDecoder_) videoDecoder_->requestSeek(position_);
+    if (audioDecoder_) audioDecoder_->requestSeek(position_);
+
     emit positionChanged(position_);
     emit bufferedChanged(buffered_);
 }
@@ -154,11 +242,15 @@ void PlaybackController::setRate(double rate)
 void PlaybackController::setVolume(int volume)
 {
     volume_ = qBound(0, volume, 100);
+    if (audioSink_)
+        audioSink_->setVolume(muted_ ? 0 : volume_);
 }
 
 void PlaybackController::setMuted(bool muted)
 {
     muted_ = muted;
+    if (audioSink_)
+        audioSink_->setVolume(muted_ ? 0 : volume_);
 }
 
 void PlaybackController::setSegments(const QList<SponsorSegment> &segments)
@@ -180,8 +272,34 @@ void PlaybackController::onTick()
     if (state_ != Playing)
         return;
 
-    const double delta = (kTickMs / 1000.0) * rate_;
-    position_ += delta;
+    double delta = (kTickMs / 1000.0) * rate_;
+
+    // With a decoder attached the position comes from the audio clock minus
+    // what is still sitting in the sound buffer, which is what the listener
+    // is actually hearing. Wall time is only the fallback for a stream with
+    // no audio track at all.
+    if (audioDecoder_) {
+        const double heard = audioDecoder_->clock() - audioSink_->latencySeconds();
+        if (heard > 0.0) {
+            delta = heard - position_;
+            position_ = heard;
+        } else {
+            position_ += delta;
+        }
+    } else if (videoDecoder_) {
+        const double shown = videoDecoder_->clock();
+        if (shown > 0.0) {
+            delta = shown - position_;
+            position_ = shown;
+        } else {
+            position_ += delta;
+        }
+    } else {
+        position_ += delta;
+    }
+
+    if (delta < 0.0)
+        delta = 0.0;
     tickAccumulator_ += delta;
 
     // The listening log counts whole seconds of actual playback, not wall
@@ -191,8 +309,13 @@ void PlaybackController::onTick()
         emit secondPlayed();
     }
 
-    if (buffered_ < duration_)
+    if (audioDecoder_ || videoDecoder_) {
+        const MediaDecoder *lead = audioDecoder_ ? audioDecoder_ : videoDecoder_;
+        Q_UNUSED(lead);
+        buffered_ = qMin(duration_, position_ + 6.0);
+    } else if (buffered_ < duration_) {
         buffered_ = qMin(duration_, buffered_ + delta * 1.4);
+    }
 
     if (duration_ > 0.0 && position_ >= duration_) {
         position_ = duration_;
@@ -242,4 +365,65 @@ void PlaybackController::checkSegments()
         emit segmentSkipped(segment.category, saved);
         return;
     }
+}
+
+
+void PlaybackController::onFrameReady(const QImage &frame, double presentationTime)
+{
+    Q_UNUSED(presentationTime);
+    emit frameReady(frame);
+}
+
+void PlaybackController::onDecoderOpened(int width, int height, double duration)
+{
+    if (width > 0 && height > 0) {
+        resolutionLabel_ = QString::fromLatin1("%1x%2").arg(width).arg(height);
+        if (videoDecoder_)
+            videoCodecLabel_ = videoDecoder_->codecName();
+    }
+
+    // The container's own duration wins over the one the metadata claimed:
+    // a flat listing sometimes rounds, and the seek bar has to be exact.
+    if (duration > 1.0 && qAbs(duration - duration_) > 1.0) {
+        duration_ = duration;
+        emit durationChanged(duration_);
+    }
+}
+
+void PlaybackController::onDecoderFailed(const QString &message)
+{
+    setState(Failed);
+    emit failed(message);
+}
+
+void PlaybackController::onDecoderEnded()
+{
+    // Two streams have to finish before the video is over; ending on the
+    // first would cut the last seconds of whichever ran shorter.
+    const int expected = (videoDecoder_ ? 1 : 0) + (audioDecoder_ ? 1 : 0);
+    if (++endedStreams_ < expected)
+        return;
+
+    clock_->stop();
+    setState(Ended);
+    emit finished();
+}
+
+void PlaybackController::onUrlExpired()
+{
+    pause();
+    emit urlExpired();
+}
+
+void PlaybackController::onAudioReady()
+{
+    if (!audioDecoder_ || !audioSink_ || !audioSink_->isOpen())
+        return;
+
+    // Hand over at most a quarter second at a time so a burst of decoded
+    // audio cannot block this thread inside the sound buffer lock.
+    const int chunk = audioDecoder_->sampleRate() * audioDecoder_->channelCount() * 2 / 4;
+    const QByteArray samples = audioDecoder_->takeAudio(chunk);
+    if (!samples.isEmpty())
+        audioSink_->write(samples);
 }
