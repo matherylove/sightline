@@ -42,8 +42,25 @@ jobs:
           if (-not (Test-Path $qmake)) { throw "qmake.exe was not found at $qmake" }
           if (-not (Test-Path $spec)) { throw "qmake.conf was not found at $spec" }
           & $qmake -v
-          & $qmake -query QT_INSTALL_PREFIX
-          & $qmake -query QMAKE_SPEC
+
+      - name: Unpack FFmpeg runtime DLLs
+        shell: pwsh
+        run: |
+          $ffmpeg = "${env:GITHUB_WORKSPACE}\third_party\ffmpeg"
+          if (-not (Test-Path $ffmpeg)) { throw "third_party\ffmpeg is missing from the checkout" }
+          $archives = Get-ChildItem -Path $ffmpeg -Filter *.7z -ErrorAction SilentlyContinue
+          foreach ($archive in $archives) {
+            Write-Host "Extracting $($archive.Name)"
+            & "C:\Program Files\7-Zip\7z.exe" x $archive.FullName "-o$ffmpeg" -y
+            if ($LASTEXITCODE -ne 0) { throw "7-Zip failed on $($archive.Name)" }
+          }
+          $required = @("avcodec-61.dll", "avformat-61.dll", "avutil-59.dll", "swscale-8.dll", "swresample-5.dll")
+          $missing = @()
+          foreach ($dll in $required) {
+            if (-not (Test-Path (Join-Path $ffmpeg $dll))) { $missing += $dll }
+          }
+          if ($missing.Count -gt 0) { throw "Missing FFmpeg runtime DLLs: $($missing -join ', ')" }
+          Get-ChildItem -Path $ffmpeg -Filter *.dll | ForEach-Object { Write-Host "  $($_.Name)  $([math]::Round($_.Length / 1MB, 1)) MB" }
 
       - name: Install Visual Studio 2017 XP build tools
         shell: pwsh
@@ -83,9 +100,6 @@ jobs:
       - name: Verify XP subsystem version
         shell: pwsh
         run: |
-          # A binary that links but reports subsystem 6.0 will refuse to start
-          # on XP with "not a valid Win32 application", so this is checked in
-          # CI rather than discovered on the target machine.
           $exe = Get-ChildItem -Path "${env:BUILD_DIR}" -Filter Sightline.exe -Recurse | Select-Object -First 1
           if (-not $exe) { throw "Sightline.exe was not produced" }
           $bytes = [System.IO.File]::ReadAllBytes($exe.FullName)
@@ -99,31 +113,17 @@ jobs:
         shell: pwsh
         run: |
           $stage = "${env:GITHUB_WORKSPACE}\stage"
-          New-Item -ItemType Directory -Path "$stage\tools" -Force | Out-Null
+          New-Item -ItemType Directory -Path $stage -Force | Out-Null
           $exe = Get-ChildItem -Path "${env:BUILD_DIR}" -Filter Sightline.exe -Recurse | Select-Object -First 1
           Copy-Item $exe.FullName "$stage\Sightline.exe"
           Copy-Item "${env:GITHUB_WORKSPACE}\README.md" "$stage\LEEME.md" -ErrorAction SilentlyContinue
-          # tools\ is where yt-dlp.exe and qjs.exe are dropped by the user;
-          # shipping the folder with a note beats an app that starts with a
-          # missing-binary error and no hint about where the file should go.
-          Set-Content -Path "$stage\tools\COLOCA-AQUI-YT-DLP.txt" -Encoding UTF8 -Value @"
-Coloca aqui yt-dlp.exe y, opcionalmente, qjs.exe (quickjs-ng).
-
-yt-dlp para Windows XP:
-  https://github.com/nicolaasjan/yt-dlp/releases
-
-Usa la variante onedir si esta disponible: el paquete onefile se
-descomprime entero en %TEMP% en cada llamada y en XP eso cuesta varios
-segundos por accion.
-
-qjs.exe es el motor JavaScript. Node y Deno no arrancan en XP; QuickJS
-es C99 y si compila. Sin el, yt-dlp cae a su interprete interno: mas
-lento, pero funcional.
-
-Para calidad completa hace falta un proveedor de PO tokens en otra
-maquina de la red (bgutil-ytdlp-pot-provider en modo servidor HTTP).
-Se configura en Herramientas -> Cadena de extraccion.
-"@
+          # The DLLs ride next to the executable. Without them Sightline.exe
+          # dies on load with a missing-module box that names avcodec and
+          # nothing else, so a build that produced no DLLs must not ship.
+          $dlls = Get-ChildItem -Path "${env:GITHUB_WORKSPACE}\third_party\ffmpeg" -Filter *.dll
+          if ($dlls.Count -eq 0) { throw "No FFmpeg DLLs to stage" }
+          $dlls | ForEach-Object { Copy-Item $_.FullName $stage }
+          Write-Host "Staged: $((Get-ChildItem $stage | Measure-Object).Count) files"
 
       - name: Upload executable
         uses: actions/upload-artifact@v4
