@@ -25,6 +25,8 @@ jobs:
     steps:
       - name: Check out source
         uses: actions/checkout@v4
+        with:
+          lfs: true
 
       - name: Download Qt
         shell: pwsh
@@ -46,21 +48,64 @@ jobs:
       - name: Unpack FFmpeg runtime DLLs
         shell: pwsh
         run: |
-          $ffmpeg = "${env:GITHUB_WORKSPACE}\third_party\ffmpeg"
-          if (-not (Test-Path $ffmpeg)) { throw "third_party\ffmpeg is missing from the checkout" }
-          $archives = Get-ChildItem -Path $ffmpeg -Filter *.7z -ErrorAction SilentlyContinue
+          $ffmpeg = Join-Path $env:GITHUB_WORKSPACE "third_party\ffmpeg"
+          if (-not (Test-Path $ffmpeg)) { throw "third_party/ffmpeg is missing from the checkout" }
+
+          Write-Host "--- third_party/ffmpeg before unpacking ---"
+          Get-ChildItem -Path $ffmpeg -Recurse -File |
+            ForEach-Object { Write-Host ("  {0,-40} {1,10:N0} bytes" -f $_.FullName.Substring($ffmpeg.Length + 1), $_.Length) }
+
+          # Archives are searched for recursively and by several extensions:
+          # the DLL that exceeds GitHub's file limit can be shipped as .7z,
+          # .zip or a split .7z.001, and it need not sit in the root.
+          $patterns = @("*.7z", "*.7z.001", "*.zip")
+          $archives = @()
+          foreach ($pattern in $patterns) {
+            $archives += Get-ChildItem -Path $ffmpeg -Filter $pattern -Recurse -File -ErrorAction SilentlyContinue
+          }
+
+          if ($archives.Count -eq 0) {
+            Write-Host "No archives found under third_party/ffmpeg; assuming the DLLs are already unpacked."
+          }
+
           foreach ($archive in $archives) {
-            Write-Host "Extracting $($archive.Name)"
-            & "C:\Program Files\7-Zip\7z.exe" x $archive.FullName "-o$ffmpeg" -y
-            if ($LASTEXITCODE -ne 0) { throw "7-Zip failed on $($archive.Name)" }
+            # A file checked in through Git LFS without lfs:true on checkout
+            # arrives as a ~130 byte text pointer. 7-Zip would report a vague
+            # format error, so it is named here instead.
+            if ($archive.Length -lt 1024) {
+              $head = Get-Content $archive.FullName -TotalCount 1 -ErrorAction SilentlyContinue
+              if ($head -like "version https://git-lfs*") {
+                throw "$($archive.Name) is a Git LFS pointer, not the archive. Commit the real file or enable LFS."
+              }
+              throw "$($archive.Name) is only $($archive.Length) bytes; it is not a usable archive."
+            }
+
+            Write-Host "Extracting $($archive.Name) ($([math]::Round($archive.Length / 1MB, 1)) MB)"
+            & "C:\Program Files\7-Zip\7z.exe" x $archive.FullName "-o$ffmpeg" -y -bso0 -bsp0
+            if ($LASTEXITCODE -ne 0) { throw "7-Zip failed on $($archive.Name) with exit code $LASTEXITCODE" }
           }
+
+          # An archive may carry its DLL inside bin/ or another folder, so
+          # anything found below the root is lifted up to sit beside the
+          # executable, which is where the loader will look for it.
+          Get-ChildItem -Path $ffmpeg -Filter *.dll -Recurse -File |
+            Where-Object { $_.DirectoryName -ne $ffmpeg } |
+            ForEach-Object {
+              Write-Host "Moving $($_.Name) up from $($_.Directory.Name)/"
+              Move-Item $_.FullName (Join-Path $ffmpeg $_.Name) -Force
+            }
+
+          Write-Host "--- DLLs present after unpacking ---"
+          $found = Get-ChildItem -Path $ffmpeg -Filter *.dll -File
+          if ($found.Count -eq 0) { Write-Host "  (none)" }
+          $found | ForEach-Object { Write-Host ("  {0,-24} {1,8:N1} MB" -f $_.Name, ($_.Length / 1MB)) }
+
           $required = @("avcodec-61.dll", "avformat-61.dll", "avutil-59.dll", "swscale-8.dll", "swresample-5.dll")
-          $missing = @()
-          foreach ($dll in $required) {
-            if (-not (Test-Path (Join-Path $ffmpeg $dll))) { $missing += $dll }
+          $missing = $required | Where-Object { -not (Test-Path (Join-Path $ffmpeg $_)) }
+          if ($missing) {
+            Write-Host "::error::Missing FFmpeg runtime DLLs: $($missing -join ', ')"
+            throw "Missing FFmpeg runtime DLLs: $($missing -join ', '). Check the listing above for what the archive actually contained."
           }
-          if ($missing.Count -gt 0) { throw "Missing FFmpeg runtime DLLs: $($missing -join ', ')" }
-          Get-ChildItem -Path $ffmpeg -Filter *.dll | ForEach-Object { Write-Host "  $($_.Name)  $([math]::Round($_.Length / 1MB, 1)) MB" }
 
       - name: Install Visual Studio 2017 XP build tools
         shell: pwsh
