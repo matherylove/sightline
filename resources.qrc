@@ -1,0 +1,5 @@
+<RCC>
+    <qresource prefix="/">
+        <file>design/sightline-ui-mockup.html</file>
+    </qresource>
+</RCC>

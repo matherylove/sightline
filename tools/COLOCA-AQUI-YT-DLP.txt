@@ -1,0 +1,16 @@
+Coloca aqui yt-dlp.exe y, opcionalmente, qjs.exe (quickjs-ng).
+
+yt-dlp para Windows XP:
+  https://github.com/nicolaasjan/yt-dlp/releases
+
+Usa la variante onedir si esta disponible: el paquete onefile se
+descomprime entero en %TEMP% en cada llamada y en XP eso cuesta varios
+segundos por accion.
+
+qjs.exe es el motor JavaScript. Node y Deno no arrancan en XP; QuickJS
+es C99 y si compila. Sin el, yt-dlp cae a su interprete interno: mas
+lento, pero funcional.
+
+Para calidad completa hace falta un proveedor de PO tokens en otra
+maquina de la red (bgutil-ytdlp-pot-provider en modo servidor HTTP).
+Se configura en Herramientas -> Cadena de extraccion.

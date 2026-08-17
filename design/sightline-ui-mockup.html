@@ -1,0 +1,1138 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sightline — Concepto de interfaz v2</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+/* ============================================================
+   SIGHTLINE v2 — hoja de concepto de interfaz
+   Gris carbón + teal de panel de instrumentos.
+   Dentro de la app: Tahoma 11 px, la fuente real de XP.
+   ============================================================ */
+
+:root{
+  --void:#101416; --panel:#1B2124; --raise:#262F32; --sink:#14191B;
+  --line:#333E42; --teal:#2FBFAE; --teal-dim:#17726A; --amber:#C9A227;
+  --text:#C6D0D2; --dim:#7B8A8E; --faint:#4E5D61;
+
+  /* categorías de SponsorBlock — funcionales, no decorativas */
+  --sb-sponsor:#C9A227; --sb-intro:#5A7FA8; --sb-promo:#B0705C;
+  --sb-inter:#8A6BA8;  --sb-music:#4E9E6A;
+
+  --mono:"IBM Plex Mono","Lucida Console",monospace;
+  --cond:"IBM Plex Sans Condensed","Arial Narrow",sans-serif;
+  --ui:Tahoma,Verdana,"DejaVu Sans",sans-serif;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0;background:var(--void);color:var(--text);font-family:var(--cond);
+  font-size:16px;line-height:1.55;
+  background-image:linear-gradient(to right,rgba(51,62,66,.2) 1px,transparent 1px),
+                   linear-gradient(to bottom,rgba(51,62,66,.2) 1px,transparent 1px);
+  background-size:48px 48px;
+}
+.wrap{max-width:1160px;margin:0 auto;padding:0 24px 96px}
+
+/* ---------- documento ---------- */
+.masthead{padding:72px 0 40px;border-bottom:1px solid var(--line)}
+.eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--teal);margin:0 0 20px}
+.eyebrow span{color:var(--faint)}
+.masthead h1{font-size:clamp(52px,9vw,104px);font-weight:700;letter-spacing:-.03em;line-height:.92;margin:0 0 20px}
+.masthead h1 b{color:var(--teal)}
+.lede{max-width:58ch;font-size:19px;color:var(--dim);margin:0 0 36px}
+.lede em{color:var(--text);font-style:normal}
+.specstrip{display:flex;flex-wrap:wrap;border:1px solid var(--line);font-family:var(--mono);font-size:11px}
+.specstrip div{padding:9px 16px;border-right:1px solid var(--line);color:var(--dim);white-space:nowrap}
+.specstrip div:last-child{border-right:0}
+.specstrip b{color:var(--text);font-weight:500}
+
+.sec{padding-top:72px}
+.sechead{display:flex;align-items:baseline;gap:16px;margin-bottom:8px}
+.secnum{font-family:var(--mono);font-size:11px;color:var(--teal);letter-spacing:.1em;padding-top:6px}
+.sechead h2{font-size:30px;font-weight:700;letter-spacing:-.015em;margin:0}
+.secnote{max-width:64ch;color:var(--dim);font-size:15px;margin:0 0 28px}
+.secnote code{font-family:var(--mono);font-size:12px;color:var(--teal);background:rgba(47,191,174,.08);padding:1px 5px}
+
+.swatches{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1px;background:var(--line);border:1px solid var(--line)}
+.sw{background:var(--panel)}
+.sw i{display:block;height:56px}
+.sw div{padding:9px 11px 11px}
+.sw b{display:block;font-family:var(--mono);font-size:11px;color:var(--text);font-weight:500}
+.sw span{display:block;font-size:12px;color:var(--dim);margin-top:3px;line-height:1.35}
+
+.frame{margin-bottom:14px}
+.framebar{display:flex;justify-content:space-between;align-items:center;font-family:var(--mono);font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:var(--faint);padding-bottom:8px}
+.framebar b{color:var(--teal);font-weight:400}
+.scroller{overflow-x:auto;padding-bottom:4px}
+.scroller::-webkit-scrollbar{height:10px}
+.scroller::-webkit-scrollbar-track{background:var(--sink)}
+.scroller::-webkit-scrollbar-thumb{background:var(--line)}
+.notes{list-style:none;margin:0 0 8px;padding:0;display:grid;gap:6px;grid-template-columns:repeat(auto-fit,minmax(280px,1fr))}
+.notes li{font-family:var(--mono);font-size:11px;color:var(--dim);line-height:1.5;padding-left:16px;position:relative}
+.notes li::before{content:"—";position:absolute;left:0;color:var(--teal)}
+
+/* ============================================================
+   CROMO DE LA APLICACIÓN
+   ============================================================ */
+.win{width:1080px;background:var(--panel);border:1px solid var(--line);font-family:var(--ui);font-size:11px;color:var(--text);user-select:none}
+.win.narrow{width:660px}
+.win.pip{width:352px}
+
+.tbar{height:26px;background:var(--raise);border-bottom:1px solid var(--line);display:flex;align-items:center;padding-left:8px;gap:8px}
+.tbar .mark{width:3px;height:12px;background:var(--teal)}
+.tbar .ttl{font-weight:bold;font-size:11px}
+.tbar .ttl s{color:var(--faint);text-decoration:none;font-weight:normal}
+.tbar .btns{margin-left:auto;display:flex}
+.tbar .btns i{width:26px;height:25px;border-left:1px solid var(--line);display:grid;place-items:center;color:var(--dim);font-style:normal;font-size:10px}
+.tbar .btns i.x:hover{background:#7A2F2F;color:#fff}
+
+.mbar{height:22px;border-bottom:1px solid var(--line);display:flex;align-items:center;padding:0 4px}
+.mbar span{padding:0 9px;line-height:21px}
+.mbar span.on{background:var(--teal-dim);color:#fff}
+
+.body{display:flex;height:520px}
+.side{width:186px;border-right:1px solid var(--line);background:var(--sink);overflow:hidden;flex:none}
+.sgroup{font-size:9px;letter-spacing:.13em;color:var(--faint);padding:14px 10px 5px;text-transform:uppercase}
+.sitem{height:22px;display:flex;align-items:center;gap:8px;padding:0 10px 0 8px;border-left:2px solid transparent;color:var(--dim)}
+.sitem .g{width:12px;text-align:center;color:var(--faint);font-size:10px}
+.sitem.on{background:rgba(47,191,174,.10);border-left-color:var(--teal);color:var(--text)}
+.sitem.on .g{color:var(--teal)}
+.sitem u{margin-left:auto;text-decoration:none;font-size:10px;color:var(--faint)}
+
+.main{flex:1;display:flex;flex-direction:column;min-width:0}
+.toolbar{height:34px;border-bottom:1px solid var(--line);background:var(--raise);display:flex;align-items:center;gap:8px;padding:0 8px;flex:none}
+.field{flex:1;max-width:340px;height:20px;background:var(--sink);border:1px solid var(--line);display:flex;align-items:center;padding:0 6px;gap:6px;color:var(--faint)}
+.field b{color:var(--dim);font-weight:normal}
+.tbtn{height:20px;padding:0 9px;border:1px solid var(--line);background:var(--panel);color:var(--dim);display:flex;align-items:center;line-height:18px}
+.tbtn.on{background:var(--teal-dim);border-color:var(--teal);color:#fff}
+.tbtn.pri{background:var(--teal);border-color:var(--teal);color:#0C1213;font-weight:bold}
+.spacer{margin-left:auto}
+.crumb{height:26px;border-bottom:1px solid var(--line);display:flex;align-items:center;padding:0 10px;color:var(--faint);gap:6px;flex:none}
+.crumb b{color:var(--text);font-weight:normal}
+.crumb u{margin-left:auto;text-decoration:none;color:var(--dim)}
+
+.grid{flex:1;overflow:hidden;padding:10px;display:grid;grid-template-columns:repeat(4,1fr);gap:10px;align-content:start}
+.card .thumb{aspect-ratio:16/9;position:relative;border:1px solid var(--line);background:var(--sink);overflow:hidden}
+.card .thumb::after{content:"";position:absolute;inset:0;background:repeating-linear-gradient(126deg,rgba(47,191,174,.09) 0 3px,transparent 3px 9px)}
+.card .thumb .dur{position:absolute;right:3px;bottom:3px;z-index:2;background:rgba(8,12,13,.86);font-family:var(--mono);font-size:9px;padding:1px 4px}
+.card .thumb .prog{position:absolute;left:0;bottom:0;height:2px;background:var(--teal);z-index:2}
+.card h4{font-size:11px;font-weight:bold;margin:6px 0 3px;line-height:1.35}
+.card p{margin:0;font-size:10px;color:var(--dim);line-height:1.4}
+.t1{background:linear-gradient(148deg,#1E3A3B,#132122)}.t2{background:linear-gradient(148deg,#2A2F38,#151A1D)}
+.t3{background:linear-gradient(148deg,#153036,#101B1E)}.t4{background:linear-gradient(148deg,#33302A,#181715)}
+.t5{background:linear-gradient(148deg,#1A2B3A,#111820)}.t6{background:linear-gradient(148deg,#2C2436,#16121C)}
+.t7{background:linear-gradient(148deg,#1E3830,#121D19)}.t8{background:linear-gradient(148deg,#382A2A,#1C1414)}
+
+.status{height:24px;border-top:1px solid var(--line);background:var(--raise);display:flex;align-items:center;font-family:var(--mono);font-size:10px;color:var(--dim);flex:none}
+.status .cell{padding:0 10px;border-right:1px solid var(--line);line-height:23px;white-space:nowrap}
+.status .cell:last-child{border-right:0}
+.status .cell.grow{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis}
+.status b{color:var(--text);font-weight:400}
+.status .ok{color:var(--teal)} .status .warn{color:var(--amber)}
+.dot{display:inline-block;width:6px;height:6px;background:var(--teal);margin-right:6px;vertical-align:1px}
+.dot.warn{background:var(--amber)}
+.dot.live{animation:pulse 2.4s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
+
+/* ============================================================
+   REPRODUCTOR
+   ============================================================ */
+.player{display:flex;height:560px}
+.stage{flex:1;display:flex;flex-direction:column;background:#0A0E0F;min-width:0}
+.canvas{flex:1;position:relative;display:grid;place-items:center;background:linear-gradient(160deg,#16292B,#0B1113);min-height:0}
+.canvas::after{content:"";position:absolute;inset:0;background:repeating-linear-gradient(126deg,rgba(47,191,174,.055) 0 4px,transparent 4px 12px)}
+.canvas .surf{position:relative;z-index:2;text-align:center;font-family:var(--mono);font-size:10px;color:var(--faint);letter-spacing:.1em}
+.canvas .surf i{display:block;width:0;height:0;margin:0 auto 14px;border-left:22px solid rgba(47,191,174,.5);border-top:14px solid transparent;border-bottom:14px solid transparent}
+.osd{position:absolute;z-index:3;top:10px;left:10px;font-family:var(--mono);font-size:9px;line-height:1.7;color:var(--dim);background:rgba(8,12,13,.72);border-left:2px solid var(--teal);padding:6px 10px}
+.osd b{color:var(--teal);font-weight:400}
+
+/* aviso de salto de SponsorBlock */
+.toast{position:absolute;z-index:4;left:10px;bottom:10px;display:flex;align-items:center;gap:9px;background:rgba(8,12,13,.9);border-left:3px solid var(--sb-sponsor);padding:7px 11px;font-family:var(--ui);font-size:11px}
+.toast b{color:var(--sb-sponsor);font-weight:normal;font-family:var(--mono);font-size:10px}
+.toast u{text-decoration:none;color:var(--teal);border-bottom:1px solid var(--teal-dim)}
+
+.transport{border-top:1px solid var(--line);background:var(--panel);padding:8px 10px 9px;flex:none}
+.seek{height:6px;background:var(--sink);position:relative;margin-bottom:8px}
+.seek .buf{position:absolute;inset:0 auto 0 0;width:68%;background:var(--line)}
+.seek .fill{position:absolute;inset:0 auto 0 0;width:41%;background:var(--teal)}
+.seek .knob{position:absolute;left:41%;top:-3px;width:3px;height:12px;background:#fff;z-index:3}
+.seek .seg{position:absolute;top:0;bottom:0;z-index:2}
+.seg.sponsor{background:var(--sb-sponsor)} .seg.intro{background:var(--sb-intro)}
+.seg.promo{background:var(--sb-promo)} .seg.inter{background:var(--sb-inter)} .seg.music{background:var(--sb-music)}
+.trow{display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:10px;color:var(--dim)}
+.pbtn{height:22px;min-width:24px;padding:0 6px;border:1px solid var(--line);background:var(--raise);color:var(--text);display:grid;place-items:center;font-size:10px;font-family:var(--ui)}
+.pbtn.acc{background:var(--teal);border-color:var(--teal);color:#0C1213}
+.vol{width:56px;height:4px;background:var(--sink);position:relative}
+.vol i{position:absolute;inset:0 auto 0 0;width:64%;background:var(--dim)}
+
+/* fila de acciones del vídeo */
+.vactions{border-top:1px solid var(--line);background:var(--panel);padding:9px 10px;display:flex;align-items:center;gap:8px;flex:none}
+.chan{width:24px;height:24px;border:1px solid var(--line);background:linear-gradient(140deg,#22403F,#141D1F);flex:none}
+.vactions .who{min-width:0}
+.vactions .who b{display:block;font-size:11px;font-weight:bold}
+.vactions .who span{font-size:10px;color:var(--dim)}
+.sub{height:22px;padding:0 12px;border:1px solid var(--teal);background:var(--teal);color:#0C1213;font-weight:bold;display:flex;align-items:center;font-size:11px}
+.sub.done{background:transparent;color:var(--teal)}
+.bell{height:22px;width:24px;border:1px solid var(--line);background:var(--raise);color:var(--teal);display:grid;place-items:center}
+
+/* panel lateral con pestañas */
+.aside{width:308px;border-left:1px solid var(--line);background:var(--sink);flex:none;display:flex;flex-direction:column;min-height:0}
+.tabs{display:flex;border-bottom:1px solid var(--line);background:var(--raise);flex:none}
+.tabs span{flex:1;height:24px;display:grid;place-items:center;font-size:10px;color:var(--dim);border-right:1px solid var(--line)}
+.tabs span:last-child{border-right:0}
+.tabs span.on{background:var(--sink);color:var(--teal);box-shadow:inset 0 -2px 0 var(--teal)}
+.apane{flex:1;overflow:hidden;min-height:0}
+.ahead{height:22px;border-bottom:1px solid var(--line);display:flex;align-items:center;padding:0 10px;font-size:9px;letter-spacing:.13em;text-transform:uppercase;color:var(--faint);flex:none}
+.ahead u{margin-left:auto;text-decoration:none;color:var(--teal);font-size:9px;letter-spacing:0;text-transform:none}
+
+/* recomendados */
+.rec{display:flex;gap:8px;padding:7px 10px;border-bottom:1px solid rgba(51,62,66,.5)}
+.rec .rt{width:76px;height:43px;flex:none;border:1px solid var(--line);position:relative;overflow:hidden}
+.rec .rt::after{content:"";position:absolute;inset:0;background:repeating-linear-gradient(126deg,rgba(47,191,174,.09) 0 3px,transparent 3px 9px)}
+.rec .rt s{position:absolute;right:2px;bottom:2px;z-index:2;background:rgba(8,12,13,.86);font-family:var(--mono);font-size:8px;padding:0 3px;text-decoration:none}
+.rec .ri{min-width:0}
+.rec .ri b{display:block;font-size:10px;font-weight:bold;line-height:1.35;margin-bottom:3px}
+.rec .ri span{font-size:9px;color:var(--dim);display:block;line-height:1.45}
+.rec.next{background:rgba(47,191,174,.08);box-shadow:inset 2px 0 0 var(--teal)}
+.rec.next .ri b::before{content:"SIGUIENTE · ";font-family:var(--mono);font-size:8px;color:var(--teal);letter-spacing:.1em;font-weight:400}
+
+/* comentarios */
+.cmt{padding:9px 10px;border-bottom:1px solid rgba(51,62,66,.5)}
+.cmt .ch{display:flex;align-items:center;gap:7px;margin-bottom:4px}
+.cmt .av{width:16px;height:16px;border:1px solid var(--line);background:#22403F;flex:none}
+.cmt .ch b{font-size:10px;font-weight:bold}
+.cmt .ch s{text-decoration:none;font-family:var(--mono);font-size:9px;color:var(--faint)}
+.cmt .ch .pin{font-family:var(--mono);font-size:8px;color:var(--teal);border:1px solid var(--teal-dim);padding:0 3px}
+.cmt p{margin:0 0 5px;font-size:10px;color:var(--dim);line-height:1.5}
+.cmt .cf{display:flex;gap:12px;font-family:var(--mono);font-size:9px;color:var(--faint)}
+.cmt .cf u{text-decoration:none;color:var(--teal)}
+.cmt.reply{padding-left:26px;background:rgba(20,25,27,.5)}
+
+/* formatos */
+.fmt{display:flex;align-items:center;gap:8px;height:24px;padding:0 10px;border-bottom:1px solid rgba(51,62,66,.5);font-family:var(--mono);font-size:10px;color:var(--dim)}
+.fmt b{color:var(--text);font-weight:400;width:34px}
+.fmt u{margin-left:auto;text-decoration:none;color:var(--faint)}
+.fmt.on{background:rgba(47,191,174,.10);color:var(--text);box-shadow:inset 2px 0 0 var(--teal)}
+.fmt.off,.fmt.off b{color:var(--faint)}
+
+/* ---------- Picture in Picture ---------- */
+.pipwin{position:relative;height:198px;background:linear-gradient(160deg,#16292B,#0B1113)}
+.pipwin::after{content:"";position:absolute;inset:0;background:repeating-linear-gradient(126deg,rgba(47,191,174,.055) 0 4px,transparent 4px 12px)}
+.pipbar{position:absolute;z-index:3;left:0;right:0;bottom:0;background:rgba(8,12,13,.88);padding:6px 8px}
+.pipbar .seek{height:3px;margin-bottom:6px}
+.pipbar .seek .knob{height:9px;top:-3px}
+.piptop{position:absolute;z-index:3;top:0;left:0;right:0;display:flex;align-items:center;gap:6px;padding:5px 6px;background:linear-gradient(rgba(8,12,13,.85),transparent)}
+.piptop b{font-size:10px;font-weight:bold;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.piptop i{font-style:normal;width:18px;height:16px;border:1px solid var(--line);background:rgba(38,47,50,.9);display:grid;place-items:center;font-size:9px;color:var(--dim);flex:none}
+
+/* ============================================================
+   DIÁLOGO DE DESCARGA CON RECORTE
+   ============================================================ */
+.dlg{padding:16px 18px 14px}
+.dlg h3{font-family:var(--ui);font-size:13px;font-weight:bold;margin:0 0 5px}
+.dlg p{font-size:11px;color:var(--dim);margin:0 0 14px;line-height:1.6}
+.dlg p b{color:var(--text);font-weight:normal}
+.frow{display:flex;align-items:center;gap:8px;margin-bottom:9px;font-size:11px}
+.frow>label{width:104px;flex:none;color:var(--dim)}
+.sel{flex:1;height:20px;background:var(--sink);border:1px solid var(--line);display:flex;align-items:center;padding:0 6px;color:var(--text);font-size:11px}
+.sel u{margin-left:auto;text-decoration:none;color:var(--faint);font-size:9px}
+.sel.mono{font-family:var(--mono);font-size:10px}
+.cb{display:flex;align-items:center;gap:6px;color:var(--dim);font-size:11px}
+.cb i{width:11px;height:11px;border:1px solid var(--line);background:var(--sink);display:grid;place-items:center;font-style:normal;font-size:8px;color:var(--teal);flex:none}
+.cb i.on{border-color:var(--teal);background:rgba(47,191,174,.12)}
+
+.trimhead{display:flex;align-items:baseline;gap:8px;margin:16px 0 7px;font-family:var(--mono);font-size:9px;letter-spacing:.13em;text-transform:uppercase;color:var(--faint)}
+.trimhead u{margin-left:auto;text-decoration:none;color:var(--teal);letter-spacing:0;text-transform:none;font-size:10px}
+.trim{position:relative;height:46px;background:var(--sink);border:1px solid var(--line);overflow:hidden}
+.wave{position:absolute;inset:0;display:flex;align-items:center;gap:2px;padding:0 2px}
+.wave i{flex:1;background:var(--faint);opacity:.5}
+.trim .keep{position:absolute;top:0;bottom:0;left:18%;width:44%;border-left:2px solid var(--teal);border-right:2px solid var(--teal);background:rgba(47,191,174,.14)}
+.trim .cut{position:absolute;top:0;bottom:0;background:rgba(8,12,13,.66)}
+.trim .hand{position:absolute;top:0;bottom:0;width:2px;background:var(--teal)}
+.trim .hand s{position:absolute;top:-1px;left:-4px;width:10px;height:12px;background:var(--teal);text-decoration:none}
+.trimfoot{display:flex;align-items:center;gap:8px;margin-top:7px;font-family:var(--mono);font-size:10px;color:var(--dim)}
+.timebox{background:var(--sink);border:1px solid var(--line);padding:2px 7px;color:var(--teal)}
+.trimfoot u{margin-left:auto;text-decoration:none;color:var(--faint)}
+
+.dlgbtns{display:flex;gap:6px;justify-content:flex-end;margin-top:16px;padding-top:13px;border-top:1px solid var(--line)}
+.dbtn{min-width:80px;height:22px;border:1px solid var(--line);background:var(--raise);color:var(--text);font-family:var(--ui);font-size:11px;display:grid;place-items:center;padding:0 10px}
+.dbtn.pri{background:var(--teal);border-color:var(--teal);color:#0C1213;font-weight:bold}
+
+/* ============================================================
+   SPONSORBLOCK
+   ============================================================ */
+.sbgrid{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--line);border:1px solid var(--line)}
+.sbcol{background:var(--panel);padding:0}
+.sbrow{display:flex;align-items:center;gap:9px;padding:8px 12px;border-bottom:1px solid rgba(51,62,66,.5);font-family:var(--ui);font-size:11px}
+.sbrow:last-child{border-bottom:0}
+.sbrow .key{width:11px;height:11px;flex:none}
+.sbrow .nm{flex:1}
+.sbrow .nm s{display:block;text-decoration:none;font-size:10px;color:var(--faint);margin-top:1px}
+.sbrow .act{font-family:var(--mono);font-size:9px;color:var(--dim);border:1px solid var(--line);padding:2px 7px}
+.sbrow .act.on{color:var(--teal);border-color:var(--teal-dim)}
+.sbrow .act.off{color:var(--faint)}
+
+/* ============================================================
+   MÚSICA + LETRAS
+   ============================================================ */
+.mbody{display:flex;height:440px}
+.mmain{flex:1;display:flex;flex-direction:column;min-width:0}
+.mhero{display:flex;gap:14px;padding:14px;border-bottom:1px solid var(--line);flex:none}
+.art{width:104px;height:104px;flex:none;border:1px solid var(--line);background:linear-gradient(140deg,#1E3A3B,#151E28);position:relative}
+.art::after{content:"";position:absolute;inset:0;background:repeating-linear-gradient(126deg,rgba(47,191,174,.10) 0 3px,transparent 3px 10px)}
+.mhero .meta small{font-family:var(--mono);font-size:9px;letter-spacing:.13em;text-transform:uppercase;color:var(--teal);display:block;margin-bottom:6px}
+.mhero .meta h3{font-size:17px;margin:0 0 5px;font-family:var(--ui);font-weight:bold}
+.mhero .meta p{margin:0 0 12px;font-size:10px;color:var(--dim)}
+.tracks{flex:1;overflow:hidden}
+.trk{display:flex;align-items:center;gap:10px;height:24px;padding:0 12px;color:var(--dim);border-bottom:1px solid rgba(51,62,66,.42)}
+.trk .n{font-family:var(--mono);font-size:10px;color:var(--faint);width:16px;text-align:right}
+.trk .nm{color:var(--text);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.trk .ar{width:120px;font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.trk .tm{font-family:var(--mono);font-size:10px;color:var(--faint)}
+.trk.on{background:rgba(47,191,174,.10);box-shadow:inset 2px 0 0 var(--teal)}
+.trk.on .n{color:var(--teal)}
+
+.lyr{width:280px;border-left:1px solid var(--line);background:var(--sink);flex:none;display:flex;flex-direction:column}
+.lyrbody{flex:1;overflow:hidden;padding:10px 12px}
+.ln{display:flex;gap:9px;padding:5px 0;font-size:11px;line-height:1.45}
+.ln s{font-family:var(--mono);font-size:9px;color:var(--faint);text-decoration:none;flex:none;padding-top:2px;width:34px}
+.ln.past{color:var(--faint)}
+.ln.now{color:var(--teal);font-weight:bold}
+.ln.now s{color:var(--teal)}
+.ln.next{color:var(--text)}
+.ln.far{color:var(--dim)}
+.lyrfoot{border-top:1px solid var(--line);padding:8px 12px;font-family:var(--mono);font-size:9px;color:var(--faint);line-height:1.6}
+
+.nowbar{height:44px;border-top:1px solid var(--line);background:var(--raise);display:flex;align-items:center;gap:10px;padding:0 10px;flex:none}
+.nowbar .mini{width:28px;height:28px;border:1px solid var(--line);background:linear-gradient(140deg,#1E3A3B,#151E28);flex:none}
+.nowbar .txt{min-width:0}
+.nowbar .txt b{display:block;font-size:11px;font-weight:bold}
+.nowbar .txt span{font-size:10px;color:var(--dim)}
+.nowbar .barwrap{flex:1}
+.nowbar .bar{height:3px;background:var(--sink);position:relative}
+.nowbar .bar i{position:absolute;inset:0 auto 0 0;width:34%;background:var(--teal)}
+
+/* ============================================================
+   RECAP EN VIVO
+   ============================================================ */
+.recap{padding:14px;overflow:hidden;flex:1;display:flex;flex-direction:column;gap:12px;min-height:0}
+.rhead{display:flex;align-items:center;gap:10px;flex:none}
+.rhead h3{font-family:var(--ui);font-size:14px;font-weight:bold;margin:0}
+.rhead .livechip{font-family:var(--mono);font-size:9px;letter-spacing:.12em;color:var(--teal);border:1px solid var(--teal-dim);padding:2px 7px}
+.rhead .seg{margin-left:auto;display:flex}
+.rhead .seg span{height:20px;padding:0 10px;border:1px solid var(--line);border-right:0;display:grid;place-items:center;font-size:10px;color:var(--dim)}
+.rhead .seg span:last-child{border-right:1px solid var(--line)}
+.rhead .seg span.on{background:var(--teal-dim);border-color:var(--teal);color:#fff}
+
+.bignums{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--line);border:1px solid var(--line);flex:none}
+.bn{background:var(--sink);padding:11px 12px 12px}
+.bn small{display:block;font-family:var(--mono);font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint);margin-bottom:7px}
+.bn b{font-family:var(--mono);font-size:29px;font-weight:600;color:var(--teal);line-height:1;letter-spacing:-.02em}
+.bn b u{font-size:13px;text-decoration:none;color:var(--dim);margin-left:3px;font-weight:400}
+.bn span{display:block;font-size:10px;color:var(--dim);margin-top:6px}
+.bn span i{font-style:normal;color:var(--teal)}
+
+.rcols{display:flex;gap:12px;flex:1;min-height:0}
+.rbox{border:1px solid var(--line);background:var(--sink);display:flex;flex-direction:column;min-width:0}
+.rbox .rh{height:22px;border-bottom:1px solid var(--line);display:flex;align-items:center;padding:0 10px;font-family:var(--mono);font-size:9px;letter-spacing:.13em;text-transform:uppercase;color:var(--faint);flex:none}
+.rbox .rh u{margin-left:auto;text-decoration:none;color:var(--dim);letter-spacing:0;text-transform:none}
+.rbody{padding:9px 10px;overflow:hidden}
+
+/* reloj de escucha: histograma de 24 barras */
+.clock{display:flex;align-items:flex-end;gap:2px;height:76px;padding:0 10px 8px}
+.clock i{flex:1;background:var(--teal-dim);position:relative}
+.clock i.hot{background:var(--teal)}
+.clock i.now{background:var(--teal);box-shadow:0 0 0 1px rgba(47,191,174,.4)}
+.clockax{display:flex;justify-content:space-between;padding:0 10px 8px;font-family:var(--mono);font-size:9px;color:var(--faint)}
+
+/* barras de top artistas */
+.bar2{display:flex;align-items:center;gap:9px;padding:5px 0;font-size:11px}
+.bar2 .rk{font-family:var(--mono);font-size:10px;color:var(--faint);width:14px;text-align:right;flex:none}
+.bar2 .nm{width:104px;flex:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bar2 .tr{flex:1;height:8px;background:var(--panel);position:relative;min-width:40px}
+.bar2 .tr i{position:absolute;inset:0 auto 0 0;background:var(--teal)}
+.bar2 .vl{font-family:var(--mono);font-size:10px;color:var(--dim);width:52px;text-align:right;flex:none}
+.bar2.top .rk{color:var(--teal)}
+
+.mini2{display:flex;align-items:center;gap:9px;padding:4px 0;font-size:11px;color:var(--dim)}
+.mini2 .rk{font-family:var(--mono);font-size:10px;color:var(--faint);width:14px;text-align:right;flex:none}
+.mini2 .nm{flex:1;color:var(--text);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mini2 .nm s{display:block;text-decoration:none;font-size:9px;color:var(--faint)}
+.mini2 .vl{font-family:var(--mono);font-size:10px;flex:none}
+
+/* racha: 12 semanas */
+.streak{display:flex;gap:3px;padding:4px 0 8px}
+.streak i{flex:1;height:22px;background:var(--panel);border:1px solid var(--line)}
+.streak i.l1{background:rgba(47,191,174,.18)}
+.streak i.l2{background:rgba(47,191,174,.42)}
+.streak i.l3{background:rgba(47,191,174,.72)}
+.streak i.l4{background:var(--teal)}
+
+/* ============================================================
+   DIÁLOGO DE VINCULACIÓN
+   ============================================================ */
+.codebox{border:1px solid var(--teal);background:rgba(47,191,174,.07);padding:15px;text-align:center;margin-bottom:13px}
+.codebox small{display:block;font-family:var(--mono);font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim);margin-bottom:9px}
+.codebox b{font-family:var(--mono);font-size:27px;letter-spacing:.16em;color:var(--teal);font-weight:600}
+.steps{list-style:none;margin:0 0 14px;padding:0}
+.steps li{display:flex;gap:10px;font-size:11px;color:var(--dim);padding:5px 0;line-height:1.5}
+.steps li i{font-family:var(--mono);font-style:normal;color:var(--teal);font-size:10px;padding-top:1px}
+.waiting{display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:10px;color:var(--dim);padding:9px 0 0;border-top:1px solid var(--line)}
+
+/* ---------- componentes ---------- */
+.comps{display:grid;grid-template-columns:repeat(auto-fit,minmax(272px,1fr));gap:1px;background:var(--line);border:1px solid var(--line)}
+.comp{background:var(--panel);padding:16px}
+.comp h4{font-family:var(--mono);font-size:10px;letter-spacing:.11em;text-transform:uppercase;color:var(--faint);margin:0 0 14px;font-weight:400}
+.row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-family:var(--ui);font-size:11px;margin-bottom:10px}
+.row:last-child{margin-bottom:0}
+.row .lbl{font-family:var(--mono);font-size:9px;color:var(--faint);width:56px;flex:none}
+.chip{font-family:var(--mono);font-size:10px;padding:3px 8px;border:1px solid var(--line);color:var(--dim)}
+.chip.ok{border-color:var(--teal-dim);color:var(--teal)}
+.chip.warn{border-color:#6B5A16;color:var(--amber)}
+
+footer{margin-top:88px;padding-top:26px;border-top:1px solid var(--line);font-family:var(--mono);font-size:11px;color:var(--faint);line-height:1.8}
+footer b{color:var(--dim);font-weight:400}
+a{color:var(--teal)}
+:focus-visible{outline:2px solid var(--teal);outline-offset:2px}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+@media (max-width:720px){.masthead{padding:44px 0 30px}.wrap{padding:0 16px 64px}.sec{padding-top:52px}.sbgrid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="masthead">
+  <p class="eyebrow">Concepto de interfaz <span>/</span> Sightline 0.2 <span>/</span> Qt Widgets</p>
+  <h1>Sight<b>line</b></h1>
+  <p class="lede">Cliente nativo de YouTube y YouTube Music para Windows&nbsp;XP. Sin navegador, sin cuenta obligatoria: suscripciones, listas y estadísticas viven <em>en tu disco</em>. La extracción la hace <em>yt-dlp.exe</em> aparte; interfaz, reproductor y biblioteca son C++ puro.</p>
+  <div class="specstrip">
+    <div>Qt <b>5.6.3 LTS</b></div>
+    <div>Windows XP SP3 <b>x86</b></div>
+    <div>FFmpeg <b>4.4</b></div>
+    <div>Render <b>Direct3D 9</b></div>
+    <div>Códec <b>H.264 / AAC</b></div>
+    <div>Extracción <b>yt-dlp.exe</b></div>
+    <div>Saltos <b>SponsorBlock</b></div>
+  </div>
+</header>
+
+<!-- 01 PALETA -->
+<section class="sec">
+  <div class="sechead"><span class="secnum">01</span><h2>Paleta</h2></div>
+  <p class="secnote">Gris carbón para el cromo, teal solo donde hay señal. Las cinco categorías de SponsorBlock necesitan colores distinguibles entre sí, así que forman un grupo aparte: desaturados para que no compitan con el teal, pero legibles en una barra de 6&nbsp;px.</p>
+  <div class="swatches">
+    <div class="sw"><i style="background:#101416"></i><div><b>#101416</b><span>Fondo exterior</span></div></div>
+    <div class="sw"><i style="background:#1B2124"></i><div><b>#1B2124</b><span>Superficie principal</span></div></div>
+    <div class="sw"><i style="background:#262F32"></i><div><b>#262F32</b><span>Cromo elevado</span></div></div>
+    <div class="sw"><i style="background:#14191B"></i><div><b>#14191B</b><span>Hundido</span></div></div>
+    <div class="sw"><i style="background:#333E42"></i><div><b>#333E42</b><span>Filete 1 px</span></div></div>
+    <div class="sw"><i style="background:#2FBFAE"></i><div><b>#2FBFAE</b><span>Acento</span></div></div>
+    <div class="sw"><i style="background:#17726A"></i><div><b>#17726A</b><span>Acento pulsado</span></div></div>
+    <div class="sw"><i style="background:#C9A227"></i><div><b>#C9A227</b><span>Patrocinio / aviso</span></div></div>
+    <div class="sw"><i style="background:#5A7FA8"></i><div><b>#5A7FA8</b><span>Intro / cortinilla</span></div></div>
+    <div class="sw"><i style="background:#B0705C"></i><div><b>#B0705C</b><span>Autopromoción</span></div></div>
+    <div class="sw"><i style="background:#8A6BA8"></i><div><b>#8A6BA8</b><span>Recordatorio</span></div></div>
+    <div class="sw"><i style="background:#4E9E6A"></i><div><b>#4E9E6A</b><span>Escena musical</span></div></div>
+  </div>
+</section>
+
+<!-- 02 VENTANA PRINCIPAL -->
+<section class="sec">
+  <div class="sechead"><span class="secnum">02</span><h2>Ventana principal</h2></div>
+  <p class="secnote">Todo a tamaño real de Qt Widgets: Tahoma 11&nbsp;px, filetes de 1&nbsp;px, radio 0, sin sombras. Si no se puede pintar con <code>QStyle</code> en XP, no está aquí.</p>
+  <div class="frame">
+    <div class="framebar"><span>Sightline · Suscripciones</span><b>1080 × 592 px</b></div>
+    <div class="scroller"><div class="win">
+      <div class="tbar"><span class="mark"></span><span class="ttl">Sightline <s>— Suscripciones</s></span><span class="btns"><i>–</i><i>▫</i><i class="x">×</i></span></div>
+      <div class="mbar"><span>Archivo</span><span>Ver</span><span class="on">Biblioteca</span><span>Reproducción</span><span>Herramientas</span><span>Ayuda</span></div>
+      <div class="body">
+        <div class="side">
+          <div class="sgroup">Biblioteca</div>
+          <div class="sitem"><span class="g">◇</span>Inicio</div>
+          <div class="sitem on"><span class="g">◈</span>Suscripciones<u>142</u></div>
+          <div class="sitem"><span class="g">◷</span>Historial</div>
+          <div class="sitem"><span class="g">▤</span>Descargas<u>7</u></div>
+          <div class="sgroup">Mis listas</div>
+          <div class="sitem"><span class="g">▸</span>Ver más tarde<u>31</u></div>
+          <div class="sitem"><span class="g">▸</span>Me gusta<u>408</u></div>
+          <div class="sitem"><span class="g">▸</span>Reparaciones<u>19</u></div>
+          <div class="sgroup">Música</div>
+          <div class="sitem"><span class="g">♪</span>Álbumes<u>24</u></div>
+          <div class="sitem"><span class="g">◔</span>Mis estadísticas</div>
+          <div class="sgroup">Canales</div>
+          <div class="sitem"><span class="g">●</span>Techmoan<u>3</u></div>
+          <div class="sitem"><span class="g">●</span>LGR<u>1</u></div>
+          <div class="sitem"><span class="g">○</span>Cathode Ray Dude</div>
+          <div class="sitem"><span class="g">○</span>Nostalgia Nerd</div>
+        </div>
+        <div class="main">
+          <div class="toolbar">
+            <span class="tbtn">◂</span><span class="tbtn">▸</span>
+            <span class="field"><b>⌕</b> Buscar en YouTube</span>
+            <span class="spacer"></span>
+            <span class="tbtn on">Cuadrícula</span><span class="tbtn">Lista</span><span class="tbtn pri">Actualizar</span>
+          </div>
+          <div class="crumb"><span>Suscripciones</span><span>›</span><b>Novedades · últimos 7 días</b><u>Ordenar: más recientes ▾</u></div>
+          <div class="grid">
+            <div class="card"><div class="thumb t1"><span class="dur">18:24</span><span class="prog" style="width:62%"></span></div><h4>Restaurando un Pentium III que llevaba 20 años apagado</h4><p>Techmoan · hace 2 h · 41 mil</p></div>
+            <div class="card"><div class="thumb t2"><span class="dur">42:07</span></div><h4>Todo lo que salió mal con las tarjetas Voodoo</h4><p>LGR · hace 6 h · 88 mil</p></div>
+            <div class="card"><div class="thumb t3"><span class="dur">7:51</span></div><h4>Por qué XP sigue arrancando más rápido que tu PC</h4><p>Cathode Ray Dude · hace 1 d · 210 mil</p></div>
+            <div class="card"><div class="thumb t4"><span class="dur">1:04:32</span><span class="prog" style="width:12%"></span></div><h4>Charla completa: la demoscene en hardware de 2003</h4><p>Revision · hace 1 d · 12 mil</p></div>
+            <div class="card"><div class="thumb t5"><span class="dur">23:18</span></div><h4>Reemplazando condensadores en una placa Socket 478</h4><p>Nostalgia Nerd · hace 2 d · 57 mil</p></div>
+            <div class="card"><div class="thumb t6"><span class="dur">11:02</span></div><h4>SSDs en IDE: hasta dónde llega el adaptador</h4><p>RetroBench · hace 3 d · 34 mil</p></div>
+            <div class="card"><div class="thumb t7"><span class="dur">31:45</span></div><h4>Direct3D 9 explicado para quien viene de OpenGL</h4><p>Graphics Archive · hace 4 d · 19 mil</p></div>
+            <div class="card"><div class="thumb t8"><span class="dur">5:36</span></div><h4>El módem que sobrevivió a tres mudanzas</h4><p>Dial Tone · hace 5 d · 8,2 mil</p></div>
+          </div>
+          <div class="status">
+            <span class="cell"><span class="dot live"></span><b>Listo</b></span>
+            <span class="cell">yt-dlp <b>2026.06.10</b></span>
+            <span class="cell">qjs <span class="ok">ok</span></span>
+            <span class="cell">POT <span class="ok">lan</span></span>
+            <span class="cell">SB <span class="ok">3 210 seg.</span></span>
+            <span class="cell grow">Caché: 142 canales · 3 480 vídeos · 61 MB</span>
+            <span class="cell">RAM 148 MB</span>
+          </div>
+        </div>
+      </div>
+    </div></div>
+  </div>
+</section>
+
+<!-- 03 REPRODUCTOR -->
+<section class="sec">
+  <div class="sechead"><span class="secnum">03</span><h2>Reproductor</h2></div>
+  <p class="secnote">Todo en una sola pantalla: vídeo, canal con botón de suscripción, recomendados, comentarios y formatos en un <code>QTabWidget</code> lateral. La barra de progreso lleva los segmentos de SponsorBlock incrustados — no es una capa aparte, es la propia barra.</p>
+
+  <div class="frame">
+    <div class="framebar"><span>Sightline · Reproduciendo · pestaña «A continuación»</span><b>1080 × 660 px</b></div>
+    <div class="scroller"><div class="win">
+      <div class="tbar"><span class="mark"></span><span class="ttl">Sightline <s>— Restaurando un Pentium III…</s></span><span class="btns"><i>–</i><i>▫</i><i class="x">×</i></span></div>
+      <div class="mbar"><span>Archivo</span><span>Ver</span><span>Biblioteca</span><span class="on">Reproducción</span><span>Herramientas</span><span>Ayuda</span></div>
+      <div class="player">
+        <div class="stage">
+          <div class="canvas">
+            <div class="osd">
+              Superficie <b>D3D9</b> · YV12 → shader PS 2.0<br>
+              avc1.640028 · 1920×1080 · 30 fps<br>
+              Decodificación <b>software</b> (XP no expone DXVA2)<br>
+              Búfer <b>6,2 s</b> · reloj maestro: audio
+            </div>
+            <div class="surf"><i></i>LIENZO DE VÍDEO</div>
+            <div class="toast"><b>PATROCINIO</b> Omitidos 47 s · <u>Deshacer</u></div>
+          </div>
+          <div class="transport">
+            <div class="seek">
+              <span class="buf"></span><span class="fill"></span>
+              <span class="seg intro" style="left:0;width:2.5%"></span>
+              <span class="seg sponsor" style="left:6%;width:4.5%"></span>
+              <span class="seg inter" style="left:28%;width:1.6%"></span>
+              <span class="seg sponsor" style="left:54%;width:5.2%"></span>
+              <span class="seg promo" style="left:88%;width:6%"></span>
+              <span class="knob"></span>
+            </div>
+            <div class="trow">
+              <span class="pbtn acc">❚❚</span><span class="pbtn">▸▸</span>
+              <span>07:32 / 18:24</span>
+              <span style="margin-left:auto"></span>
+              <span>Vol</span><span class="vol"><i></i></span>
+              <span class="pbtn">1×</span><span class="pbtn">CC</span>
+              <span class="pbtn" title="Picture in Picture">PiP</span>
+              <span class="pbtn">⛶</span>
+            </div>
+          </div>
+          <div class="vactions">
+            <span class="chan"></span>
+            <span class="who"><b>Techmoan</b><span>1,4 M suscriptores · 1 vídeo sin ver</span></span>
+            <span class="sub done">Suscrito ✓</span>
+            <span class="bell">◔</span>
+            <span class="spacer"></span>
+            <span class="tbtn">👍 12 mil</span>
+            <span class="tbtn">Guardar en…</span>
+            <span class="tbtn pri">Descargar…</span>
+          </div>
+        </div>
+        <div class="aside">
+          <div class="tabs"><span class="on">A continuación</span><span>Comentarios</span><span>Formatos</span></div>
+          <div class="apane">
+            <div class="ahead">De este canal <u>Reproducción automática ✓</u></div>
+            <div class="rec next"><span class="rt"><s>22:10</s></span><span class="ri"><b>El Pentium III arranca: primera prueba con XP</b><span>Techmoan · 96 mil · hace 3 sem.</span></span></div>
+            <div class="rec"><span class="rt"><s>14:38</s></span><span class="ri"><b>Fuentes de alimentación de 2001: qué falla siempre</b><span>Techmoan · 71 mil</span></span></div>
+            <div class="ahead">Recomendados</div>
+            <div class="rec"><span class="rt"><s>31:45</s></span><span class="ri"><b>Direct3D 9 explicado para quien viene de OpenGL</b><span>Graphics Archive · 19 mil</span></span></div>
+            <div class="rec"><span class="rt"><s>23:18</s></span><span class="ri"><b>Reemplazando condensadores en Socket 478</b><span>Nostalgia Nerd · 57 mil</span></span></div>
+            <div class="rec"><span class="rt"><s>11:02</s></span><span class="ri"><b>SSDs en IDE: hasta dónde llega el adaptador</b><span>RetroBench · 34 mil</span></span></div>
+            <div class="rec"><span class="rt"><s>7:51</s></span><span class="ri"><b>Por qué XP sigue arrancando más rápido que tu PC</b><span>Cathode Ray Dude · 210 mil</span></span></div>
+            <div class="rec"><span class="rt"><s>42:07</s></span><span class="ri"><b>Todo lo que salió mal con las tarjetas Voodoo</b><span>LGR · 88 mil</span></span></div>
+          </div>
+        </div>
+      </div>
+      <div class="status">
+        <span class="cell"><span class="dot live"></span><b>Reproduciendo</b></span>
+        <span class="cell">avc1.640028 <b>1080p30</b></span>
+        <span class="cell">Perdidos <b>0</b></span>
+        <span class="cell">CPU <b>34 %</b></span>
+        <span class="cell">SB <span class="ok">5 segmentos · 2 omitidos</span></span>
+        <span class="cell grow">Red 4,3 Mb/s · búfer 6,2 s · URL caduca en 4 h 51 min</span>
+        <span class="cell">POT <span class="ok">lan</span></span>
+      </div>
+    </div></div>
+  </div>
+
+  <ul class="notes">
+    <li>«Suscrito» no cambia nada en Google: se guarda en la base local. Si vinculaste cuenta, se sincroniza.</li>
+    <li>La reproducción automática encadena con la pestaña visible, así que siempre sabes qué viene después.</li>
+    <li>El aviso de salto se puede deshacer durante 5 s. Nunca salta sin decírtelo.</li>
+    <li>El botón PiP está en la fila de transporte, no escondido en un menú contextual.</li>
+  </ul>
+
+  <!-- comentarios -->
+  <div class="frame" style="margin-top:34px">
+    <div class="framebar"><span>Panel lateral · pestaña «Comentarios»</span><b>308 px de ancho</b></div>
+    <div class="scroller"><div style="width:308px;border:1px solid var(--line);background:var(--sink);font-family:var(--ui);font-size:11px">
+      <div class="tabs"><span>A continuación</span><span class="on">Comentarios</span><span>Formatos</span></div>
+      <div class="ahead">2 481 comentarios <u>Principales ▾</u></div>
+      <div class="cmt">
+        <div class="ch"><span class="av"></span><b>@retro_bench</b><span class="pin">FIJADO</span><s>hace 2 h</s></div>
+        <p>El truco del condensador de 1000 µF a 16 V me salvó una placa idéntica el mes pasado. Confirmado que funciona.</p>
+        <div class="cf"><u>▲ 842</u><span>▼</span><u>Responder</u><u>12 respuestas</u></div>
+      </div>
+      <div class="cmt reply">
+        <div class="ch"><span class="av"></span><b>@techmoan</b><s>hace 1 h</s></div>
+        <p>Buen apunte. Lo menciono en el minuto 12:40 pero se me pasó ponerlo en la descripción.</p>
+        <div class="cf"><u>▲ 311</u><span>▼</span><u>Responder</u></div>
+      </div>
+      <div class="cmt">
+        <div class="ch"><span class="av"></span><b>@dialtone_archive</b><s>hace 4 h</s></div>
+        <p>Vengo de un XP con 512 MB y este vídeo va perfecto en 480p. Qué maravilla no tener que abrir el navegador.</p>
+        <div class="cf"><u>▲ 508</u><span>▼</span><u>Responder</u><u>3 respuestas</u></div>
+      </div>
+      <div class="cmt">
+        <div class="ch"><span class="av"></span><b>@socket478</b><s>hace 6 h</s></div>
+        <p>¿Alguien sabe qué pasta térmica usa? En el vídeo no se ve la marca.</p>
+        <div class="cf"><u>▲ 96</u><span>▼</span><u>Responder</u></div>
+      </div>
+      <div style="padding:9px 10px;border-top:1px solid var(--line);font-family:var(--mono);font-size:9px;color:var(--faint);line-height:1.7">
+        Los comentarios se piden aparte y tardan unos segundos.<br>
+        Herramientas → Cargarlos solo al abrir la pestaña ✓
+      </div>
+    </div></div>
+  </div>
+  <ul class="notes">
+    <li>Cargar comentarios es una llamada extra y lenta a yt-dlp: por eso es bajo demanda y se dice explícitamente.</li>
+    <li>El autor del canal se marca con la insignia FIJADO o por respuesta anidada, sin colores nuevos.</li>
+  </ul>
+</section>
+
+<!-- 04 PIP -->
+<section class="sec">
+  <div class="sechead"><span class="secnum">04</span><h2>Picture in Picture</h2></div>
+  <p class="secnote">Ventana sin marco, siempre encima, con su propia superficie D3D9 y <code>WS_EX_TOPMOST</code>. Los controles aparecen al pasar el ratón; en reposo solo se ve el vídeo. Redimensiona conservando la relación 16:9 y recuerda la esquina donde la dejaste.</p>
+  <div class="frame">
+    <div class="framebar"><span>Ventana flotante · controles al pasar el ratón</span><b>352 × 198 px</b></div>
+    <div class="scroller"><div class="win pip" style="border-color:var(--teal)">
+      <div class="pipwin">
+        <div class="piptop">
+          <b>Restaurando un Pentium III…</b>
+          <span class="spacer"></span>
+          <i title="Volver a la ventana">⇱</i><i title="Anclar">⚲</i><i title="Cerrar">×</i>
+        </div>
+        <div class="pipbar">
+          <div class="seek">
+            <span class="buf"></span><span class="fill"></span>
+            <span class="seg sponsor" style="left:54%;width:5.2%"></span>
+            <span class="seg promo" style="left:88%;width:6%"></span>
+            <span class="knob"></span>
+          </div>
+          <div class="trow" style="font-size:9px">
+            <span class="pbtn acc" style="height:18px;min-width:20px">❚❚</span>
+            <span class="pbtn" style="height:18px;min-width:20px">▸▸</span>
+            <span>07:32 / 18:24</span>
+            <span style="margin-left:auto"></span>
+            <span class="vol" style="width:40px"><i></i></span>
+          </div>
+        </div>
+      </div>
+    </div></div>
+  </div>
+  <ul class="notes">
+    <li>Borde teal de 1 px: es la única ventana de la app que lo lleva, para localizarla entre otras ventanas.</li>
+    <li>Los segmentos de SponsorBlock siguen visibles aunque la barra mida 3 px de alto.</li>
+    <li>Sin barra de título: el arrastre se hace desde cualquier punto del vídeo.</li>
+  </ul>
+</section>
+
+<!-- 05 DESCARGA CON RECORTE -->
+<section class="sec">
+  <div class="sechead"><span class="secnum">05</span><h2>Descargar con recorte</h2></div>
+  <p class="secnote">El recorte se hace con <code>-ss</code> y <code>-to</code> sobre el flujo, copiando sin recodificar cuando los cortes caen en fotograma clave. Si no caen, Sightline lo dice y ofrece recodificar solo los bordes en vez de todo el archivo.</p>
+  <div class="frame">
+    <div class="framebar"><span>Diálogo modal · Descargar…</span><b>660 × 512 px</b></div>
+    <div class="scroller"><div class="win narrow">
+      <div class="tbar"><span class="mark"></span><span class="ttl">Descargar — Restaurando un Pentium III…</span><span class="btns"><i class="x">×</i></span></div>
+      <div class="dlg">
+        <div class="frow"><label>Contenido</label>
+          <span class="cb"><i class="on">✓</i>Vídeo + audio</span>
+          <span class="cb"><i></i>Solo audio</span>
+          <span class="cb"><i></i>Solo vídeo</span>
+        </div>
+        <div class="frow"><label>Formato</label><span class="sel mono">137 · 1080p · avc1.640028 · 4,1 Mb/s<u>▾</u></span></div>
+        <div class="frow"><label>Audio</label><span class="sel mono">140 · AAC 128 kb/s · m4a<u>▾</u></span></div>
+        <div class="frow"><label>Contenedor</label><span class="sel">MP4 (sin recodificar)<u>▾</u></span></div>
+        <div class="frow"><label>Guardar en</label><span class="sel mono">D:\Vídeos\Sightline\<u>Examinar…</u></span></div>
+        <div class="frow"><label></label>
+          <span class="cb"><i class="on">✓</i>Miniatura</span>
+          <span class="cb"><i class="on">✓</i>Metadatos</span>
+          <span class="cb"><i></i>Subtítulos</span>
+          <span class="cb"><i class="on">✓</i>Capítulos</span>
+        </div>
+
+        <div class="trimhead"><span>Recorte</span><u>Usar segmentos de SponsorBlock como cortes</u></div>
+        <div class="trim">
+          <div class="wave">
+            <i style="height:18%"></i><i style="height:34%"></i><i style="height:56%"></i><i style="height:41%"></i><i style="height:68%"></i>
+            <i style="height:52%"></i><i style="height:77%"></i><i style="height:44%"></i><i style="height:62%"></i><i style="height:88%"></i>
+            <i style="height:70%"></i><i style="height:49%"></i><i style="height:81%"></i><i style="height:58%"></i><i style="height:36%"></i>
+            <i style="height:66%"></i><i style="height:92%"></i><i style="height:47%"></i><i style="height:73%"></i><i style="height:55%"></i>
+            <i style="height:39%"></i><i style="height:64%"></i><i style="height:85%"></i><i style="height:50%"></i><i style="height:71%"></i>
+            <i style="height:43%"></i><i style="height:59%"></i><i style="height:78%"></i><i style="height:33%"></i><i style="height:61%"></i>
+            <i style="height:46%"></i><i style="height:69%"></i><i style="height:53%"></i><i style="height:80%"></i><i style="height:37%"></i>
+            <i style="height:63%"></i><i style="height:74%"></i><i style="height:42%"></i><i style="height:57%"></i><i style="height:29%"></i>
+          </div>
+          <span class="cut" style="left:0;width:18%"></span>
+          <span class="cut" style="left:62%;right:0"></span>
+          <span class="keep"></span>
+          <span class="hand" style="left:18%"><s></s></span>
+          <span class="hand" style="left:62%"><s></s></span>
+        </div>
+        <div class="trimfoot">
+          <span>Desde</span><span class="timebox">00:03:18.400</span>
+          <span>Hasta</span><span class="timebox">00:11:26.900</span>
+          <span>= 8 min 08 s · ≈ 248 MB</span>
+          <u>Marcar en la posición actual</u>
+        </div>
+        <p style="margin:11px 0 0;font-size:10px;color:var(--dim);font-family:var(--mono);line-height:1.6">
+          Los dos cortes caen en fotograma clave: se copiará sin recodificar.
+        </p>
+
+        <div class="dlgbtns">
+          <span class="dbtn">Añadir a la cola</span>
+          <span class="dbtn">Cancelar</span>
+          <span class="dbtn pri">Descargar</span>
+        </div>
+      </div>
+    </div></div>
+  </div>
+  <ul class="notes">
+    <li>La onda es del audio ya descargado en el búfer — sirve para encontrar el corte de oído, no de adorno.</li>
+    <li>«Marcar en la posición actual» toma el punto donde va el reproductor: recortar sin salir del vídeo.</li>
+    <li>Usar los segmentos de SponsorBlock como cortes deja el archivo ya limpio de patrocinios.</li>
+    <li>El aviso de fotograma clave aparece antes de descargar, no como error después.</li>
+  </ul>
+</section>
+
+<!-- 06 SPONSORBLOCK -->
+<section class="sec">
+  <div class="sechead"><span class="secnum">06</span><h2>SponsorBlock</h2></div>
+  <p class="secnote">Cada categoría decide por su cuenta entre omitir sola, avisar con un botón, o solo marcarse en la barra. Por defecto solo el patrocinio se omite sin preguntar; lo demás se muestra y tú decides.</p>
+  <div class="sbgrid">
+    <div class="sbcol">
+      <div class="sbrow"><span class="key" style="background:var(--sb-sponsor)"></span><span class="nm">Patrocinio<s>Promoción pagada, códigos de descuento</s></span><span class="act on">Omitir solo</span></div>
+      <div class="sbrow"><span class="key" style="background:var(--sb-intro)"></span><span class="nm">Intro y cortinilla<s>Animación sin contenido</s></span><span class="act on">Omitir solo</span></div>
+      <div class="sbrow"><span class="key" style="background:var(--sb-promo)"></span><span class="nm">Autopromoción<s>Su propio Patreon, mercancía, canal</s></span><span class="act">Avisar</span></div>
+      <div class="sbrow"><span class="key" style="background:var(--sb-inter)"></span><span class="nm">Recordatorio<s>«Suscríbete y dale a la campana»</s></span><span class="act">Avisar</span></div>
+      <div class="sbrow"><span class="key" style="background:var(--sb-music)"></span><span class="nm">Escena musical<s>Solo en vídeos de música</s></span><span class="act off">Solo marcar</span></div>
+    </div>
+    <div class="sbcol">
+      <div class="sbrow"><span class="nm">Enviar mis saltos a la comunidad<s>Anónimo, con identificador local aleatorio</s></span><span class="act on">Activado</span></div>
+      <div class="sbrow"><span class="nm">Contar el tiempo ahorrado<s>Aparece en tus estadísticas</s></span><span class="act on">Activado</span></div>
+      <div class="sbrow"><span class="nm">Servidor<s>sponsor.ajay.app</s></span><span class="act">Cambiar…</span></div>
+      <div class="sbrow"><span class="nm">Descargar segmentos por adelantado<s>Al abrir el vídeo, no al llegar al corte</s></span><span class="act on">Activado</span></div>
+      <div class="sbrow"><span class="nm">Tiempo ahorrado hasta hoy<s>Desde la primera instalación</s></span><span class="act on">14 h 27 min</span></div>
+    </div>
+  </div>
+  <ul class="notes">
+    <li>Tres acciones posibles y nada más: omitir solo, avisar, solo marcar. Sin escalas de sensibilidad.</li>
+    <li>El color de cada categoría es el mismo aquí, en la barra de progreso y en el aviso de salto.</li>
+    <li>El envío de segmentos se explica en la misma línea, sin enlaces a una política aparte.</li>
+  </ul>
+</section>
+
+<!-- 07 MÚSICA + LETRAS -->
+<section class="sec">
+  <div class="sechead"><span class="secnum">07</span><h2>Modo música y letras</h2></div>
+  <p class="secnote">Sin lienzo de vídeo: es la mitad del proyecto que funciona en cualquier máquina. Las letras sincronizadas ocupan el panel derecho; al pulsar una línea, el reproductor salta a ese segundo.</p>
+  <div class="frame">
+    <div class="framebar"><span>Sightline · Música · panel de letras</span><b>1080 × 556 px</b></div>
+    <div class="scroller"><div class="win">
+      <div class="tbar"><span class="mark"></span><span class="ttl">Sightline <s>— Música</s></span><span class="btns"><i>–</i><i>▫</i><i class="x">×</i></span></div>
+      <div class="mbar"><span>Archivo</span><span>Ver</span><span class="on">Biblioteca</span><span>Reproducción</span><span>Herramientas</span><span>Ayuda</span></div>
+      <div class="mbody">
+        <div class="side">
+          <div class="sgroup">Música</div>
+          <div class="sitem on"><span class="g">♪</span>Álbumes<u>24</u></div>
+          <div class="sitem"><span class="g">♪</span>Canciones<u>612</u></div>
+          <div class="sitem"><span class="g">♪</span>Artistas<u>78</u></div>
+          <div class="sitem"><span class="g">◔</span>Mis estadísticas</div>
+          <div class="sgroup">Listas guardadas</div>
+          <div class="sitem"><span class="g">▸</span>Para trabajar<u>84</u></div>
+          <div class="sitem"><span class="g">▸</span>Chiptune<u>52</u></div>
+          <div class="sitem"><span class="g">▸</span>Sin conexión<u>18</u></div>
+        </div>
+        <div class="mmain">
+          <div class="mhero">
+            <div class="art"></div>
+            <div class="meta">
+              <small>Álbum · 1997 · 11 pistas</small>
+              <h3>Signals from the Modem Age</h3>
+              <p>Various Artists · 48 min · guardado en local</p>
+              <span class="tbtn pri" style="display:inline-flex">▸ Reproducir</span>
+              <span class="tbtn" style="display:inline-flex">Aleatorio</span>
+              <span class="tbtn" style="display:inline-flex">Descargar…</span>
+              <span class="tbtn on" style="display:inline-flex">Letras</span>
+            </div>
+          </div>
+          <div class="tracks">
+            <div class="trk"><span class="n">1</span><span class="nm">Handshake</span><span class="ar">Null Modem</span><span class="tm">3:41</span></div>
+            <div class="trk on"><span class="n">▸</span><span class="nm">Carrier Lost</span><span class="ar">Null Modem</span><span class="tm">4:12</span></div>
+            <div class="trk"><span class="n">3</span><span class="nm">Baud</span><span class="ar">Terminal Velocity</span><span class="tm">5:03</span></div>
+            <div class="trk"><span class="n">4</span><span class="nm">Dial Tone Theme</span><span class="ar">Terminal Velocity</span><span class="tm">2:58</span></div>
+            <div class="trk"><span class="n">5</span><span class="nm">Packet Loss</span><span class="ar">Grey Static</span><span class="tm">6:20</span></div>
+            <div class="trk"><span class="n">6</span><span class="nm">Autoexec</span><span class="ar">Grey Static</span><span class="tm">4:44</span></div>
+          </div>
+          <div class="nowbar">
+            <span class="mini"></span>
+            <span class="txt"><b>Carrier Lost</b><span>Null Modem</span></span>
+            <span class="pbtn">◂◂</span><span class="pbtn acc">❚❚</span><span class="pbtn">▸▸</span>
+            <span class="barwrap"><span class="bar"><i></i></span></span>
+            <span style="font-family:var(--mono);font-size:10px;color:var(--dim)">1:26 / 4:12</span>
+          </div>
+        </div>
+        <div class="lyr">
+          <div class="ahead">Letra sincronizada <u>Ajustar ±</u></div>
+          <div class="lyrbody">
+            <div class="ln past"><s>0:58</s><span>Static on the open line</span></div>
+            <div class="ln past"><s>1:04</s><span>Counting tones until they answer</span></div>
+            <div class="ln past"><s>1:12</s><span>Every handshake is a promise</span></div>
+            <div class="ln past"><s>1:19</s><span>That someone waited on the other end</span></div>
+            <div class="ln now"><s>1:26</s><span>Carrier lost, carrier lost</span></div>
+            <div class="ln next"><s>1:34</s><span>And the room goes quiet again</span></div>
+            <div class="ln far"><s>1:41</s><span>Redial, redial, redial</span></div>
+            <div class="ln far"><s>1:49</s><span>Nothing answers after midnight</span></div>
+            <div class="ln far"><s>1:56</s><span>Just the hum of something sleeping</span></div>
+            <div class="ln far"><s>2:03</s><span>In a beige box under the desk</span></div>
+          </div>
+          <div class="lyrfoot">
+            Fuente: LRCLIB · sincronizada<br>
+            Pulsa una línea para saltar a ese segundo.<br>
+            Se guarda junto al archivo como .lrc
+          </div>
+        </div>
+      </div>
+      <div class="status">
+        <span class="cell"><span class="dot live"></span><b>Reproduciendo</b></span>
+        <span class="cell">Opus <b>130 kb/s</b></span>
+        <span class="cell">Salida <b>DirectSound</b></span>
+        <span class="cell">CPU <b>3 %</b></span>
+        <span class="cell">Letra <span class="ok">sincronizada</span></span>
+        <span class="cell grow">Cola: 6 pistas · escuchando desde hace 41 min</span>
+        <span class="cell">POT <span class="ok">lan</span></span>
+      </div>
+    </div></div>
+  </div>
+  <ul class="notes">
+    <li>Cuatro estados de línea: pasada, actual, siguiente y lejana. La actual es la única en teal.</li>
+    <li>Si solo hay letra sin sincronizar, se muestra como texto plano y la barra de estado lo dice.</li>
+    <li>El .lrc se guarda junto al archivo, así que sirve también fuera de Sightline.</li>
+  </ul>
+</section>
+
+<!-- 08 RECAP EN VIVO -->
+<section class="sec">
+  <div class="sechead"><span class="secnum">08</span><h2>Estadísticas en vivo</h2></div>
+  <p class="secnote">Nada de esperar a diciembre. Toda la escucha se registra en la base local y esta pantalla se actualiza mientras suena la canción: el contador de minutos sube solo, y la barra del artista que estás oyendo crece a la vista. Es un panel de instrumentos, no una tarjeta para compartir.</p>
+
+  <div class="frame">
+    <div class="framebar"><span>Sightline · Música › Mis estadísticas</span><b>1080 × 592 px</b></div>
+    <div class="scroller"><div class="win">
+      <div class="tbar"><span class="mark"></span><span class="ttl">Sightline <s>— Mis estadísticas</s></span><span class="btns"><i>–</i><i>▫</i><i class="x">×</i></span></div>
+      <div class="mbar"><span>Archivo</span><span>Ver</span><span class="on">Biblioteca</span><span>Reproducción</span><span>Herramientas</span><span>Ayuda</span></div>
+      <div class="body" style="height:498px">
+        <div class="side">
+          <div class="sgroup">Música</div>
+          <div class="sitem"><span class="g">♪</span>Álbumes<u>24</u></div>
+          <div class="sitem"><span class="g">♪</span>Canciones<u>612</u></div>
+          <div class="sitem"><span class="g">♪</span>Artistas<u>78</u></div>
+          <div class="sitem on"><span class="g">◔</span>Mis estadísticas</div>
+          <div class="sgroup">Periodo</div>
+          <div class="sitem"><span class="g">·</span>Hoy</div>
+          <div class="sitem on"><span class="g">·</span>Últimos 30 días</div>
+          <div class="sitem"><span class="g">·</span>Este año</div>
+          <div class="sitem"><span class="g">·</span>Desde siempre</div>
+          <div class="sgroup">Exportar</div>
+          <div class="sitem"><span class="g">▤</span>CSV</div>
+          <div class="sitem"><span class="g">▤</span>Imagen PNG</div>
+        </div>
+        <div class="main">
+          <div class="recap">
+            <div class="rhead">
+              <h3>Últimos 30 días</h3>
+              <span class="livechip"><span class="dot live" style="width:5px;height:5px"></span>EN VIVO</span>
+              <span class="seg"><span>Hoy</span><span class="on">30 días</span><span>Año</span><span>Siempre</span></span>
+            </div>
+
+            <div class="bignums">
+              <div class="bn"><small>Tiempo escuchado</small><b>68<u>h</u> 14<u>m</u></b><span>Sube ahora mismo · <i>+41 min hoy</i></span></div>
+              <div class="bn"><small>Pistas</small><b>1 284</b><span><i>312 distintas</i> · 4,1 repeticiones de media</span></div>
+              <div class="bn"><small>Artistas</small><b>78</b><span><i>9 nuevos</i> este mes</span></div>
+              <div class="bn"><small>Racha</small><b>23<u>días</u></b><span>Tu mejor racha: <i>41 días</i></span></div>
+            </div>
+
+            <div class="rcols">
+              <div class="rbox" style="flex:1.15">
+                <div class="rh">Top artistas<u>por minutos</u></div>
+                <div class="rbody">
+                  <div class="bar2 top"><span class="rk">1</span><span class="nm">Null Modem</span><span class="tr"><i style="width:100%"></i></span><span class="vl">14 h 02</span></div>
+                  <div class="bar2"><span class="rk">2</span><span class="nm">Grey Static</span><span class="tr"><i style="width:71%"></i></span><span class="vl">9 h 58</span></div>
+                  <div class="bar2"><span class="rk">3</span><span class="nm">Terminal Velocity</span><span class="tr"><i style="width:58%"></i></span><span class="vl">8 h 07</span></div>
+                  <div class="bar2"><span class="rk">4</span><span class="nm">Soft Reset</span><span class="tr"><i style="width:44%"></i></span><span class="vl">6 h 11</span></div>
+                  <div class="bar2"><span class="rk">5</span><span class="nm">Beige Box</span><span class="tr"><i style="width:36%"></i></span><span class="vl">5 h 02</span></div>
+                  <div class="bar2"><span class="rk">6</span><span class="nm">Dial Tone</span><span class="tr"><i style="width:27%"></i></span><span class="vl">3 h 46</span></div>
+                  <div class="bar2"><span class="rk">7</span><span class="nm">Parallel Port</span><span class="tr"><i style="width:19%"></i></span><span class="vl">2 h 39</span></div>
+                </div>
+              </div>
+
+              <div style="display:flex;flex-direction:column;gap:12px;flex:1;min-width:0">
+                <div class="rbox">
+                  <div class="rh">Reloj de escucha<u>hora local</u></div>
+                  <div class="clock">
+                    <i style="height:6%"></i><i style="height:3%"></i><i style="height:2%"></i><i style="height:2%"></i>
+                    <i style="height:4%"></i><i style="height:9%"></i><i style="height:18%"></i><i style="height:31%"></i>
+                    <i style="height:44%"></i><i class="hot" style="height:66%"></i><i class="hot" style="height:74%"></i><i style="height:52%"></i>
+                    <i style="height:38%"></i><i style="height:41%"></i><i class="hot" style="height:69%"></i><i class="hot" style="height:81%"></i>
+                    <i class="now" style="height:94%"></i><i style="height:58%"></i><i style="height:47%"></i><i style="height:39%"></i>
+                    <i style="height:51%"></i><i style="height:62%"></i><i style="height:34%"></i><i style="height:14%"></i>
+                  </div>
+                  <div class="clockax"><span>00</span><span>06</span><span>12</span><span>18</span><span>23</span></div>
+                </div>
+                <div class="rbox" style="flex:1;min-height:0">
+                  <div class="rh">Top pistas<u>reproducciones</u></div>
+                  <div class="rbody">
+                    <div class="mini2"><span class="rk">1</span><span class="nm">Carrier Lost<s>Null Modem</s></span><span class="vl">62</span></div>
+                    <div class="mini2"><span class="rk">2</span><span class="nm">Autoexec<s>Grey Static</s></span><span class="vl">48</span></div>
+                    <div class="mini2"><span class="rk">3</span><span class="nm">Baud<s>Terminal Velocity</s></span><span class="vl">41</span></div>
+                    <div class="mini2"><span class="rk">4</span><span class="nm">Packet Loss<s>Grey Static</s></span><span class="vl">37</span></div>
+                  </div>
+                </div>
+              </div>
+
+              <div style="display:flex;flex-direction:column;gap:12px;width:236px;flex:none">
+                <div class="rbox">
+                  <div class="rh">Últimas 12 semanas</div>
+                  <div class="rbody">
+                    <div class="streak">
+                      <i class="l2"></i><i class="l1"></i><i class="l3"></i><i class="l2"></i><i class="l4"></i><i class="l3"></i>
+                      <i class="l1"></i><i class="l2"></i><i class="l4"></i><i class="l4"></i><i class="l3"></i><i class="l4"></i>
+                    </div>
+                    <div style="font-family:var(--mono);font-size:9px;color:var(--faint);line-height:1.6">
+                      Semana más alta: 8 h 41 min<br>Media: 5 h 41 min
+                    </div>
+                  </div>
+                </div>
+                <div class="rbox" style="flex:1">
+                  <div class="rh">Detalles</div>
+                  <div class="rbody" style="font-family:var(--mono);font-size:10px;color:var(--dim);line-height:2">
+                    Álbum más oído<br><b style="color:var(--text);font-weight:400">Signals from the Modem Age</b><br><br>
+                    Pista más repetida en un día<br><b style="color:var(--text);font-weight:400">Carrier Lost · 11 veces</b><br><br>
+                    Día más largo<br><b style="color:var(--text);font-weight:400">14 mar · 4 h 22 min</b><br><br>
+                    Ahorrado con SponsorBlock<br><b style="color:var(--teal);font-weight:400">2 h 08 min</b>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="status">
+            <span class="cell"><span class="dot live"></span><b>Actualizando en vivo</b></span>
+            <span class="cell">Reproduciendo <b>Carrier Lost</b></span>
+            <span class="cell">Sesión <b>41 min</b></span>
+            <span class="cell grow">Registro local: 18 402 reproducciones desde el 2 nov 2025 · 4,2 MB</span>
+            <span class="cell">Nunca sale del equipo</span>
+          </div>
+        </div>
+      </div>
+    </div></div>
+  </div>
+
+  <ul class="notes">
+    <li>La barra marcada de otro tono en el reloj es la hora actual: te ves entrando en tu propia estadística.</li>
+    <li>Sin confeti ni pantallas por pasos. Es un panel: lo abres, lo lees, lo cierras.</li>
+    <li>El periodo se cambia con un solo control y todo el panel responde — sin recargar ni esperar.</li>
+    <li>Exportar a PNG existe para quien quiera compartirlo, pero no es el propósito de la pantalla.</li>
+    <li>«Nunca sale del equipo» está en la barra de estado, no en un aviso de privacidad aparte.</li>
+  </ul>
+</section>
+
+<!-- 09 VINCULAR -->
+<section class="sec">
+  <div class="sechead"><span class="secnum">09</span><h2>Vincular cuenta sin navegador</h2></div>
+  <p class="secnote">Device Flow de OAuth: Sightline muestra un código, tú lo escribes en el móvil. La máquina con XP nunca abre un navegador ni toca una contraseña.</p>
+  <div class="frame">
+    <div class="framebar"><span>Diálogo modal · Herramientas → Vincular cuenta</span><b>660 × 430 px</b></div>
+    <div class="scroller"><div class="win narrow">
+      <div class="tbar"><span class="mark"></span><span class="ttl">Vincular cuenta de Google</span><span class="btns"><i class="x">×</i></span></div>
+      <div class="dlg">
+        <h3>Escribe este código en otro dispositivo</h3>
+        <p>Sightline no necesita tu contraseña y no abrirá ningún navegador aquí. Solo pedirá permiso de <b>lectura</b> para copiar tus suscripciones y listas a este equipo.</p>
+        <div class="codebox"><small>Código de vinculación</small><b>HJPK–TZQM</b></div>
+        <ul class="steps">
+          <li><i>1</i><span>Abre <b>google.com/device</b> en el móvil o en otro ordenador.</span></li>
+          <li><i>2</i><span>Escribe el código de arriba y acepta el acceso de lectura.</span></li>
+          <li><i>3</i><span>Vuelve aquí. Esta ventana se cerrará sola.</span></li>
+        </ul>
+        <p style="font-family:var(--mono);font-size:10px;line-height:1.7;margin:0 0 4px">
+          Se copiarán: suscripciones, listas propias y «Me gusta».<br>
+          No están disponibles en la API: historial y «Ver más tarde».
+        </p>
+        <div class="waiting"><span class="dot live"></span>Esperando confirmación… el código caduca en 14:52</div>
+        <div class="dlgbtns">
+          <span class="dbtn">Importar CSV de Takeout</span>
+          <span class="dbtn">Cancelar</span>
+          <span class="dbtn pri">Copiar código</span>
+        </div>
+      </div>
+    </div></div>
+  </div>
+</section>
+
+<!-- 10 BARRA DE ESTADO -->
+<section class="sec">
+  <div class="sechead"><span class="secnum">10</span><h2>La barra de estado</h2></div>
+  <p class="secnote">Es el elemento que define esta app. La cadena de extracción es frágil por naturaleza, así que Sightline la enseña entera en vez de fingir que no existe. Cuando algo se rompe, ya sabes qué antes de abrir un foro.</p>
+  <div class="frame">
+    <div class="framebar"><span>Estados</span><b>1080 × 24 px cada uno</b></div>
+    <div class="scroller"><div style="width:1080px;display:grid;gap:14px">
+      <div>
+        <div class="status" style="border:1px solid var(--line)">
+          <span class="cell"><span class="dot"></span><b>Listo</b></span>
+          <span class="cell">yt-dlp <b>2026.06.10</b></span>
+          <span class="cell">qjs <span class="ok">ok</span></span>
+          <span class="cell">POT <span class="ok">lan · 192.168.1.40</span></span>
+          <span class="cell">SB <span class="ok">3 210 seg.</span></span>
+          <span class="cell grow">Caché: 142 canales · 3 480 vídeos · 61 MB</span>
+          <span class="cell">RAM 148 MB</span>
+        </div>
+        <p class="secnote" style="margin:7px 0 0;font-family:var(--mono);font-size:11px">Todo en orden.</p>
+      </div>
+      <div>
+        <div class="status" style="border:1px solid var(--line)">
+          <span class="cell"><span class="dot warn"></span><b class="warn">Calidad limitada</b></span>
+          <span class="cell">yt-dlp <b>2026.06.10</b></span>
+          <span class="cell">qjs <span class="ok">ok</span></span>
+          <span class="cell">POT <span class="warn">sin proveedor</span></span>
+          <span class="cell grow">Máximo disponible: 360p · itag 18 — configura un proveedor para más</span>
+          <span class="cell">RAM 132 MB</span>
+        </div>
+        <p class="secnote" style="margin:7px 0 0;font-family:var(--mono);font-size:11px">Sigue funcionando y dice exactamente qué pierdes y cómo arreglarlo.</p>
+      </div>
+      <div>
+        <div class="status" style="border:1px solid var(--line)">
+          <span class="cell"><span class="dot warn"></span><b class="warn">Motor JS de reserva</b></span>
+          <span class="cell">yt-dlp <b>2026.06.10</b></span>
+          <span class="cell">qjs <span class="warn">no encontrado</span></span>
+          <span class="cell">POT <span class="ok">lan</span></span>
+          <span class="cell grow">Usando el intérprete interno: la resolución tarda unos segundos más</span>
+          <span class="cell">RAM 140 MB</span>
+        </div>
+        <p class="secnote" style="margin:7px 0 0;font-family:var(--mono);font-size:11px">Degradación, no fallo: describe la consecuencia real en vez de un código de error.</p>
+      </div>
+      <div>
+        <div class="status" style="border:1px solid var(--line)">
+          <span class="cell"><span class="dot warn"></span><b class="warn">SponsorBlock sin conexión</b></span>
+          <span class="cell">yt-dlp <b>2026.06.10</b></span>
+          <span class="cell">qjs <span class="ok">ok</span></span>
+          <span class="cell">POT <span class="ok">lan</span></span>
+          <span class="cell grow">Se usan los 3 210 segmentos ya guardados · reintento en 4 min</span>
+          <span class="cell">RAM 145 MB</span>
+        </div>
+        <p class="secnote" style="margin:7px 0 0;font-family:var(--mono);font-size:11px">Los segmentos en caché siguen sirviendo. La reproducción nunca se bloquea por un servicio externo.</p>
+      </div>
+    </div></div>
+  </div>
+</section>
+
+<!-- 11 COMPONENTES -->
+<section class="sec">
+  <div class="sechead"><span class="secnum">11</span><h2>Componentes</h2></div>
+  <p class="secnote">Todo dibujable con <code>QStyle</code> y hojas de estilo de Qt 5.6. Sin degradados suaves, sin sombras, sin animación salvo el punto de estado.</p>
+  <div class="comps">
+    <div class="comp">
+      <h4>Botones · 20 px</h4>
+      <div class="row"><span class="lbl">normal</span><span class="tbtn">Actualizar</span><span class="tbtn">Cancelar</span></div>
+      <div class="row"><span class="lbl">primario</span><span class="tbtn pri">Descargar…</span><span class="tbtn pri">Reproducir</span></div>
+      <div class="row"><span class="lbl">activo</span><span class="tbtn on">Cuadrícula</span><span class="tbtn">Lista</span></div>
+      <div class="row"><span class="lbl">canal</span><span class="sub">Suscribirse</span><span class="sub done">Suscrito ✓</span><span class="bell">◔</span></div>
+    </div>
+    <div class="comp">
+      <h4>Barra con segmentos</h4>
+      <div class="row"><span class="seek" style="flex:1">
+        <span class="buf"></span><span class="fill"></span>
+        <span class="seg intro" style="left:0;width:4%"></span>
+        <span class="seg sponsor" style="left:12%;width:8%"></span>
+        <span class="seg inter" style="left:46%;width:3%"></span>
+        <span class="seg promo" style="left:86%;width:9%"></span>
+        <span class="knob"></span></span>
+      </div>
+      <div class="row" style="font-family:var(--mono);font-size:9px;color:var(--faint);gap:12px">
+        <span><i style="display:inline-block;width:8px;height:8px;background:var(--sb-sponsor)"></i> Patrocinio</span>
+        <span><i style="display:inline-block;width:8px;height:8px;background:var(--sb-intro)"></i> Intro</span>
+        <span><i style="display:inline-block;width:8px;height:8px;background:var(--sb-promo)"></i> Autopromo</span>
+        <span><i style="display:inline-block;width:8px;height:8px;background:var(--sb-inter)"></i> Recordatorio</span>
+      </div>
+    </div>
+    <div class="comp">
+      <h4>Casillas y selectores</h4>
+      <div class="row"><span class="cb"><i class="on">✓</i>Miniatura</span><span class="cb"><i></i>Subtítulos</span><span class="cb"><i class="on">✓</i>Capítulos</span></div>
+      <div class="row"><span class="sel mono" style="flex:1">137 · 1080p · avc1 · 4,1 Mb/s<u>▾</u></span></div>
+      <div class="row"><span class="seg" style="display:flex"><span style="height:20px;padding:0 10px;border:1px solid var(--line);border-right:0;display:grid;place-items:center;font-size:10px;color:var(--dim)">Hoy</span><span style="height:20px;padding:0 10px;border:1px solid var(--teal);background:var(--teal-dim);color:#fff;display:grid;place-items:center;font-size:10px">30 días</span><span style="height:20px;padding:0 10px;border:1px solid var(--line);border-left:0;display:grid;place-items:center;font-size:10px;color:var(--dim)">Año</span></span></div>
+    </div>
+    <div class="comp">
+      <h4>Cifra grande · estadísticas</h4>
+      <div style="border:1px solid var(--line);background:var(--sink);width:180px">
+        <div class="bn"><small>Tiempo escuchado</small><b>68<u>h</u> 14<u>m</u></b><span>Sube ahora mismo · <i>+41 min hoy</i></span></div>
+      </div>
+    </div>
+    <div class="comp">
+      <h4>Línea de letra</h4>
+      <div style="background:var(--sink);border:1px solid var(--line);padding:8px 10px">
+        <div class="ln past"><s>1:19</s><span>That someone waited on the other end</span></div>
+        <div class="ln now"><s>1:26</s><span>Carrier lost, carrier lost</span></div>
+        <div class="ln next"><s>1:34</s><span>And the room goes quiet again</span></div>
+        <div class="ln far"><s>1:41</s><span>Redial, redial, redial</span></div>
+      </div>
+    </div>
+    <div class="comp">
+      <h4>Escala tipográfica</h4>
+      <div class="row" style="font-family:var(--mono);font-size:29px;color:var(--teal);font-weight:600">29 px mono — cifra</div>
+      <div class="row" style="font-size:13px;font-weight:bold">13 px negrita — título de diálogo</div>
+      <div class="row" style="font-size:11px;font-weight:bold">11 px negrita — tarjetas, menú activo</div>
+      <div class="row" style="font-size:11px">11 px — interfaz general</div>
+      <div class="row" style="font-size:10px;color:var(--dim)">10 px — metadatos secundarios</div>
+      <div class="row" style="font-family:var(--mono);font-size:10px;color:var(--dim)">10 px mono — barra de estado, cifras</div>
+      <div class="row" style="font-size:9px;letter-spacing:.13em;color:var(--faint);text-transform:uppercase">9 px versal — rótulos de grupo</div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <b>Sightline</b> · concepto de interfaz 0.2 · maqueta estática, sin funcionalidad<br>
+  Tipografía dentro de la app: <b>Tahoma 11 px</b>, la fuente de sistema de Windows XP.<br>
+  Documento: IBM Plex Sans Condensed / IBM Plex Mono.
+</footer>
+
+</div>
+</body>
+</html>
