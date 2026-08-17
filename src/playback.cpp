@@ -4,6 +4,7 @@
 
 #include "audio_sink.h"
 #include "media_decoder.h"
+#include "net_transport.h"
 
 namespace {
 const int kTickMs = 100;
@@ -115,7 +116,21 @@ void PlaybackController::open(const VideoItem &video, const MediaFormat *videoFo
         connect(audioDecoder_, SIGNAL(failed(QString)), this, SLOT(onDecoderFailed(QString)));
         connect(audioDecoder_, SIGNAL(urlExpired()), this, SLOT(onUrlExpired()));
 
-        if (audioDecoder_->openStream(audioFormat_.url, &error)) {
+        // FFmpeg opens the URL itself unless Qt is the only stack with TLS
+        // here, in which case the custom AVIO bridge takes over.
+        const MediaDecoder::Transport transport =
+            (NetTransport::kind() == NetTransport::QtSsl && !NetTransport::ffmpegCanDoTls())
+                ? MediaDecoder::QtBridgeIo : MediaDecoder::NativeIo;
+
+        bool opened = audioDecoder_->openStream(audioFormat_.url, &error, transport);
+        if (!opened && transport == MediaDecoder::NativeIo) {
+            // One retry through Qt: a build without a TLS backend fails here
+            // and there is no point telling the user before trying the other
+            // route we already have.
+            opened = audioDecoder_->openStream(audioFormat_.url, &error,
+                                               MediaDecoder::QtBridgeIo);
+        }
+        if (opened) {
             audioSink_->start(audioDecoder_->sampleRate(), audioDecoder_->channelCount());
             audioSink_->setVolume(volume_);
             audioDecoder_->start();
@@ -136,7 +151,16 @@ void PlaybackController::open(const VideoItem &video, const MediaFormat *videoFo
         connect(videoDecoder_, SIGNAL(failed(QString)), this, SLOT(onDecoderFailed(QString)));
         connect(videoDecoder_, SIGNAL(urlExpired()), this, SLOT(onUrlExpired()));
 
-        if (videoDecoder_->openStream(videoFormat_.url, &error)) {
+        const MediaDecoder::Transport videoTransport =
+            (NetTransport::kind() == NetTransport::QtSsl && !NetTransport::ffmpegCanDoTls())
+                ? MediaDecoder::QtBridgeIo : MediaDecoder::NativeIo;
+
+        bool videoOpened = videoDecoder_->openStream(videoFormat_.url, &error, videoTransport);
+        if (!videoOpened && videoTransport == MediaDecoder::NativeIo) {
+            videoOpened = videoDecoder_->openStream(videoFormat_.url, &error,
+                                                    MediaDecoder::QtBridgeIo);
+        }
+        if (videoOpened) {
             videoDecoder_->start();
         } else {
             delete videoDecoder_;

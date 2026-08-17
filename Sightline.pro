@@ -66,6 +66,8 @@ SOURCES += \
     src/sponsorblock.cpp \
     src/ytdlp.cpp \
     src/ytdlp_setup.cpp \
+    src/net_transport.cpp \
+    src/thumbnail_fetcher.cpp \
     src/media_source.cpp \
     src/media_decoder.cpp \
     src/audio_sink.cpp \
@@ -90,6 +92,8 @@ HEADERS += \
     src/sponsorblock.h \
     src/ytdlp.h \
     src/ytdlp_setup.h \
+    src/net_transport.h \
+    src/thumbnail_fetcher.h \
     src/media_source.h \
     src/media_decoder.h \
     src/audio_sink.h \

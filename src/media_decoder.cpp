@@ -41,7 +41,7 @@ QString avError(int code)
 
 MediaDecoder::MediaDecoder(Kind kind, QObject *parent)
     : QThread(parent),
-      kind_(kind), source_(0),
+      kind_(kind), source_(0), transport_(NativeIo),
       format_(0), avio_(0), codec_(0), scaler_(0), resampler_(0),
       frame_(0), scaled_(0), packet_(0), ioBuffer_(0), scaledBuffer_(0),
       streamIndex_(-1),
@@ -73,40 +73,66 @@ qint64 MediaDecoder::seekPacket(void *opaque, qint64 offset, int whence)
     return self->source_->seekTo(offset, whence);
 }
 
-bool MediaDecoder::openStream(const QString &url, QString *error)
+bool MediaDecoder::openStream(const QString &url, QString *error, Transport transport)
 {
     closeAll();
+    transport_ = transport;
 
-    source_->open(url);
+    AVDictionary *options = 0;
 
-    ioBuffer_ = static_cast<unsigned char *>(av_malloc(kIoBufferSize));
-    if (!ioBuffer_) {
-        if (error) *error = QString::fromUtf8("Sin memoria para el búfer de entrada.");
-        return false;
+    if (transport_ == NativeIo) {
+        format_ = avformat_alloc_context();
+        if (!format_) {
+            if (error) *error = QString::fromUtf8("No se pudo reservar el demuxer.");
+            return false;
+        }
+
+        // googlevideo rejects requests without a plausible browser agent, and
+        // a stream that stalls has to reconnect rather than end: these files
+        // are served in chunks and the connection is dropped between them.
+        av_dict_set(&options, "user_agent",
+            "Mozilla/5.0 (Windows NT 5.1) AppleWebKit/537.36 (KHTML, like Gecko) Sightline/0.1", 0);
+        av_dict_set(&options, "reconnect", "1", 0);
+        av_dict_set(&options, "reconnect_streamed", "1", 0);
+        av_dict_set(&options, "reconnect_on_network_error", "1", 0);
+        av_dict_set(&options, "reconnect_delay_max", "5", 0);
+        av_dict_set_int(&options, "rw_timeout", 15000000, 0);
+        av_dict_set(&options, "protocol_whitelist", "http,https,tcp,tls,crypto", 0);
+    } else {
+        source_->open(url);
+
+        ioBuffer_ = static_cast<unsigned char *>(av_malloc(kIoBufferSize));
+        if (!ioBuffer_) {
+            if (error) *error = QString::fromUtf8("Sin memoria para el búfer de entrada.");
+            return false;
+        }
+
+        avio_ = avio_alloc_context(ioBuffer_, kIoBufferSize, 0, this,
+                                   &MediaDecoder::readPacket, 0, &MediaDecoder::seekPacket);
+        if (!avio_) {
+            av_freep(&ioBuffer_);
+            if (error) *error = QString::fromUtf8("No se pudo crear el contexto de E/S.");
+            return false;
+        }
+
+        format_ = avformat_alloc_context();
+        if (!format_) {
+            if (error) *error = QString::fromUtf8("No se pudo reservar el demuxer.");
+            return false;
+        }
+        format_->pb = avio_;
+        format_->flags |= AVFMT_FLAG_CUSTOM_IO;
     }
-
-    avio_ = avio_alloc_context(ioBuffer_, kIoBufferSize, 0, this,
-                               &MediaDecoder::readPacket, 0, &MediaDecoder::seekPacket);
-    if (!avio_) {
-        av_freep(&ioBuffer_);
-        if (error) *error = QString::fromUtf8("No se pudo crear el contexto de E/S.");
-        return false;
-    }
-
-    format_ = avformat_alloc_context();
-    if (!format_) {
-        if (error) *error = QString::fromUtf8("No se pudo reservar el demuxer.");
-        return false;
-    }
-    format_->pb = avio_;
-    format_->flags |= AVFMT_FLAG_CUSTOM_IO;
 
     // The adaptive files are fragmented MP4 or WebM with a moov at the front,
     // so a small probe is enough and keeps the first frame quick.
     format_->probesize = 512 * 1024;
     format_->max_analyze_duration = 3 * AV_TIME_BASE;
 
-    int result = avformat_open_input(&format_, "", 0, 0);
+    int result = avformat_open_input(&format_,
+                                     transport_ == NativeIo ? url.toUtf8().constData() : "",
+                                     0, &options);
+    av_dict_free(&options);
     if (result < 0) {
         if (error) *error = QString::fromUtf8("No se pudo abrir el stream: ") + avError(result);
         return false;
@@ -458,14 +484,24 @@ void MediaDecoder::run()
         }
         locker.unlock();
 
-        if (source_->expired()) {
+        if (transport_ == QtBridgeIo && source_->expired()) {
             emit urlExpired();
             break;
         }
 
         const int result = av_read_frame(format_, packet_);
         if (result < 0) {
-            if (result == AVERROR_EOF || source_->finished()) {
+            // On the native transport a 403 comes back as an I/O error, not
+            // as EOF, so an early failure well short of the duration is read
+            // as the link having expired rather than as a broken file.
+            if (transport_ == NativeIo && result != AVERROR_EOF
+                && duration_ > 0.0 && clock_ < duration_ - 5.0) {
+                emit urlExpired();
+                break;
+            }
+
+            if (result == AVERROR_EOF
+                || (transport_ == QtBridgeIo && source_->finished())) {
                 // Flush whatever the decoder is still holding before saying
                 // the stream is over, or the last frames are simply lost.
                 avcodec_send_packet(codec_, 0);

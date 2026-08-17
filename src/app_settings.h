@@ -62,6 +62,10 @@ struct AppSettings
     int windowHeight;
     bool windowMaximised;
 
+    // The yt-dlp format selector this policy amounts to. Kept here so the
+    // player, the downloader and the extractor cannot drift apart.
+    QString formatSelector() const;
+
     SegmentAction actionFor(SponsorSegment::Category category) const;
     void setActionFor(SponsorSegment::Category category, SegmentAction action);
 };

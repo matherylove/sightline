@@ -115,6 +115,12 @@ struct VideoItem
     QList<MediaFormat> formats;
     QList<VideoChapter> chapters;
 
+    // What yt-dlp's own selector picked, and the SponsorBlock segments it
+    // returned with the extraction. Both come free with the same process
+    // call, so nothing here is resolved twice.
+    QList<MediaFormat> requested;
+    QList<SponsorSegment> segments;
+
     bool detailed;           // false when it came from a flat listing
     qint64 resumePosition;   // seconds, 0 when unwatched
     QDateTime urlsFetchedAt; // googlevideo URLs expire; this dates them
@@ -128,6 +134,11 @@ struct VideoItem
     // are tied to the address that asked for them. Anything older is refused
     // with a 403, so the player re-extracts instead of failing.
     bool urlsLikelyExpired() const;
+
+    // Prefer what yt-dlp resolved; fall back to walking the list only when
+    // the selector produced nothing usable.
+    const MediaFormat *selectedVideo() const;
+    const MediaFormat *selectedAudio() const;
 
     const MediaFormat *bestVideoFormat(int maxHeight, bool avcOnly) const;
     const MediaFormat *bestAudioFormat(bool preferAac) const;

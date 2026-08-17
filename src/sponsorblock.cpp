@@ -13,6 +13,8 @@
 #include <QUrl>
 #include <QUrlQuery>
 
+#include "net_transport.h"
+
 SponsorBlock::SponsorBlock(const SightlinePaths &paths, const AppSettings &settings, QObject *parent)
     : QObject(parent), paths_(paths), settings_(settings), network_(0), online_(true)
 {
@@ -105,6 +107,18 @@ void SponsorBlock::fetch(const QString &videoId)
                            SponsorSegment::apiName(SponsorSegment::Category(i)));
     }
     url.setQuery(query);
+
+    if (NetTransport::kind() != NetTransport::QtSsl) {
+        // Qt cannot reach an https endpoint on this machine. The cached
+        // segments already loaded above still apply, so playback keeps its
+        // skips; only fresh lookups are unavailable.
+        inFlight_.removeAll(videoId);
+        if (online_) {
+            online_ = false;
+            emit onlineChanged(false);
+        }
+        return;
+    }
 
     QNetworkRequest request(url);
     request.setRawHeader("User-Agent", "Sightline/0.1");

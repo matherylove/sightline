@@ -1,16 +1,14 @@
 #include "library.h"
 
 #include <QDateTime>
+#include <QThread>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
-#include <QNetworkAccessManager>
-#include <QNetworkReply>
-#include <QNetworkRequest>
-#include <QUrl>
+#include "thumbnail_fetcher.h"
 #include <QSaveFile>
 #include <QTextStream>
 
@@ -65,11 +63,12 @@ VideoItem videoFromJson(const QJsonObject &o)
 } // namespace
 
 Library::Library(const SightlinePaths &paths, QObject *parent)
-    : QObject(parent), paths_(paths), network_(0)
+    : QObject(parent), paths_(paths), fetcher_(0)
 {
-    network_ = new QNetworkAccessManager(this);
-    connect(network_, SIGNAL(finished(QNetworkReply *)),
-            this, SLOT(onThumbnailFinished(QNetworkReply *)));
+    fetcher_ = new ThumbnailFetcher(paths_.thumbnails(), this);
+    connect(fetcher_, SIGNAL(fetched(QString, QString)),
+            this, SLOT(onThumbnailFetched(QString, QString)), Qt::QueuedConnection);
+    fetcher_->start(QThread::LowPriority);
 }
 
 QString Library::watchLaterId() { return QString::fromLatin1("local:watchlater"); }
@@ -581,40 +580,19 @@ QPixmap Library::thumbnail(const VideoItem &video)
         }
     }
 
-    QString url = video.thumbnailUrl;
-    if (url.isEmpty())
-        url = QString::fromLatin1("https://i.ytimg.com/vi/") + video.id + QString::fromLatin1("/hqdefault.jpg");
-
-    if (!pendingThumbnails_.contains(video.id)) {
-        pendingThumbnails_.append(video.id);
-        QNetworkRequest request((QUrl(url)));
-        request.setAttribute(QNetworkRequest::FollowRedirectsAttribute, true);
-        request.setRawHeader("User-Agent", "Sightline/0.1");
-        QNetworkReply *reply = network_->get(request);
-        reply->setProperty("videoId", video.id);
-    }
+    // Queued on the worker thread. The grid draws its placeholder tile until
+    // thumbnailReady arrives, so nothing blocks here.
+    fetcher_->request(video.id, video.thumbnailUrl);
     return QPixmap();
 }
 
-void Library::onThumbnailFinished(QNetworkReply *reply)
+void Library::onThumbnailFetched(const QString &videoId, const QString &filePath)
 {
-    const QString videoId = reply->property("videoId").toString();
-    pendingThumbnails_.removeAll(videoId);
-
-    if (reply->error() == QNetworkReply::NoError && !videoId.isEmpty()) {
-        const QByteArray data = reply->readAll();
-        QPixmap pixmap;
-        if (pixmap.loadFromData(data)) {
-            // Stored at grid size, not at source size: a hundred 480x360
-            // pixmaps in memory is a real cost on a machine with 512 MB.
-            const QPixmap scaled = pixmap.scaled(QSize(320, 180), Qt::KeepAspectRatioByExpanding,
-                                                 Qt::SmoothTransformation);
-            scaled.save(thumbnailFile(videoId), "JPG", 82);
-            pixmapCache_.insert(videoId, scaled);
-            emit thumbnailReady(videoId);
-        }
-    }
-    reply->deleteLater();
+    QPixmap pixmap;
+    if (!pixmap.load(filePath))
+        return;
+    pixmapCache_.insert(videoId, pixmap);
+    emit thumbnailReady(videoId);
 }
 
 int Library::importSubscriptionsCsv(const QString &path, QString *error)

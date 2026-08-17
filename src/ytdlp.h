@@ -43,6 +43,7 @@ public:
         Version,
         Extract,        // one video, full detail
         Search,
+        MusicSearch,
         ChannelFeed,
         PlaylistItems,
         Comments,
@@ -98,6 +99,7 @@ public:
 
     QString extract(const QString &videoId);
     QString search(const QString &query, int limit = 20);
+    QString musicSearch(const QString &query, int limit = 20);
     QString channelFeed(const QString &channelId, int limit = 30);
     QString playlistItems(const QString &playlistId, int limit = 100);
     QString comments(const QString &videoId, int limit = 40);

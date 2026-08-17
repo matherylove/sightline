@@ -112,6 +112,7 @@ private:
     QLabel *estimateLabel_;
     QLabel *keyframeLabel_;
     QPushButton *segmentsButton_;
+    QCheckBox *removeSponsors_;
 };
 
 // Device Flow. The XP machine never opens a browser and never sees a

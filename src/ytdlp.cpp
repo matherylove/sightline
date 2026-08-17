@@ -208,6 +208,13 @@ QString YtDlp::search(const QString &query, int limit)
     return enqueue(job);
 }
 
+QString YtDlp::musicSearch(const QString &query, int limit)
+{
+    YtDlpJob *job = new YtDlpJob(YtDlpJob::MusicSearch, query, this);
+    job->setLimit(limit);
+    return enqueue(job);
+}
+
 QString YtDlp::channelFeed(const QString &channelId, int limit)
 {
     YtDlpJob *job = new YtDlpJob(YtDlpJob::ChannelFeed, channelId, this);
@@ -350,8 +357,22 @@ QStringList YtDlp::argumentsFor(const YtDlpJob *job) const
 
     case YtDlpJob::Extract:
         arguments << QString::fromLatin1("--dump-single-json")
-                  << QString::fromLatin1("--no-playlist")
-                  << (QString::fromLatin1("https://www.youtube.com/watch?v=") + job->target());
+                  << QString::fromLatin1("--no-playlist");
+
+        // SponsorBlock comes back inside the extraction rather than from a
+        // second HTTP client of our own. yt-dlp already does the hashed
+        // prefix lookup, the category filtering and the caching, and it does
+        // them against a server it keeps working with as the API moves.
+        arguments << QString::fromLatin1("--sponsorblock-mark")
+                  << QString::fromLatin1("all");
+
+        // The format is chosen by yt-dlp's selector, not by walking the list
+        // here. Its fallback chain handles cases we would get wrong: a video
+        // with no separate audio, a livestream, a format that exists but has
+        // no URL. We only state the policy; it resolves it.
+        arguments << QString::fromLatin1("-f") << settings_.formatSelector();
+
+        arguments << (QString::fromLatin1("https://www.youtube.com/watch?v=") + job->target());
         break;
 
     case YtDlpJob::Search:
@@ -359,6 +380,22 @@ QStringList YtDlp::argumentsFor(const YtDlpJob *job) const
                   << QString::fromLatin1("--flat-playlist")
                   << (QString::fromLatin1("ytsearch") + limit + QString::fromLatin1(":") + job->target());
         break;
+
+    case YtDlpJob::MusicSearch: {
+        // There is no ytmsearch: prefix, so the music site's own search page
+        // is handed over as a URL. That is what keeps results on YouTube
+        // Music instead of falling back to the main site.
+        QString encoded = job->target();
+        encoded.replace(QLatin1Char('%'), QLatin1String("%25"));
+        encoded.replace(QLatin1Char(' '), QLatin1String("+"));
+        encoded.replace(QLatin1Char('&'), QLatin1String("%26"));
+        encoded.replace(QLatin1Char('#'), QLatin1String("%23"));
+        arguments << QString::fromLatin1("--dump-json")
+                  << QString::fromLatin1("--flat-playlist")
+                  << QString::fromLatin1("--playlist-end") << limit
+                  << (QString::fromLatin1("https://music.youtube.com/search?q=") + encoded);
+        break;
+    }
 
     case YtDlpJob::ChannelFeed:
         arguments << QString::fromLatin1("--dump-json")
@@ -571,6 +608,35 @@ VideoItem YtDlp::videoFromJson(const QJsonObject &object)
         const MediaFormat format = formatFromJson(formats.at(i).toObject());
         if (!format.url.isEmpty())
             video.formats.append(format);
+    }
+
+    // What the selector resolved. Single-format results have no
+    // requested_formats array and put the url at the top level instead.
+    const QJsonArray requested = object.value(QLatin1String("requested_formats")).toArray();
+    for (int i = 0; i < requested.size(); ++i) {
+        const MediaFormat format = formatFromJson(requested.at(i).toObject());
+        if (!format.url.isEmpty())
+            video.requested.append(format);
+    }
+    if (video.requested.isEmpty() && !stringValue(object, "url").isEmpty()) {
+        MediaFormat single = formatFromJson(object);
+        if (single.itag.isEmpty())
+            single.itag = stringValue(object, "format_id");
+        video.requested.append(single);
+    }
+
+    // SponsorBlock, marked as chapters by --sponsorblock-mark. No second
+    // network client, no hashing, no cache of our own.
+    const QJsonArray marked = object.value(QLatin1String("sponsorblock_chapters")).toArray();
+    for (int i = 0; i < marked.size(); ++i) {
+        const QJsonObject entry = marked.at(i).toObject();
+        SponsorSegment segment;
+        segment.category = SponsorSegment::categoryFromApi(stringValue(entry, "category"));
+        segment.start = doubleValue(entry, "start_time");
+        segment.end = doubleValue(entry, "end_time");
+        segment.uuid = stringValue(entry, "_uuid");
+        if (segment.end > segment.start)
+            video.segments.append(segment);
     }
 
     const QJsonArray chapters = object.value(QLatin1String("chapters")).toArray();

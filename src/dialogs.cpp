@@ -185,7 +185,7 @@ DownloadDialog::DownloadDialog(const VideoItem &video, const AppSettings &settin
       videoFormatBox_(0), audioFormatBox_(0), containerBox_(0), directoryEdit_(0),
       thumbnailCheck_(0), metadataCheck_(0), subtitlesCheck_(0), chaptersCheck_(0),
       trim_(0), startLabel_(0), endLabel_(0), estimateLabel_(0),
-      keyframeLabel_(0), segmentsButton_(0)
+      keyframeLabel_(0), segmentsButton_(0), removeSponsors_(0)
 {
     setDialogWidth(660);
     QVBoxLayout *layout = contentLayout();
@@ -284,6 +284,12 @@ DownloadDialog::DownloadDialog(const VideoItem &video, const AppSettings &settin
     QHBoxLayout *trimHead = new QHBoxLayout;
     trimHead->addWidget(sectionLabel(QString::fromUtf8("Recorte"), this));
     trimHead->addStretch(1);
+    removeSponsors_ = new QCheckBox(
+        QString::fromUtf8("Quitar patrocinios del archivo"), this);
+    removeSponsors_->setToolTip(QString::fromUtf8(
+        "Lo hace el post-procesador de yt-dlp, no el recorte manual."));
+    trimHead->addWidget(removeSponsors_);
+
     segmentsButton_ = new QPushButton(
         QString::fromUtf8("Usar segmentos de SponsorBlock como cortes"), this);
     segmentsButton_->setObjectName(QString::fromLatin1("flatLink"));
@@ -502,20 +508,33 @@ QStringList DownloadDialog::buildArguments(const QString &cacheDir) const
               << QString::fromLatin1("--no-playlist")
               << QString::fromLatin1("--cache-dir") << QDir::toNativeSeparators(cacheDir);
 
+    // An explicit itag wins, but it always carries a fallback so a format
+    // that has since disappeared does not turn into a failed download.
     QString selector;
     if (audioOnly()) {
         selector = selectedAudioItag().isEmpty()
             ? QString::fromLatin1("ba[acodec^=mp4a]/ba")
-            : selectedAudioItag();
+            : selectedAudioItag() + QString::fromLatin1("/ba[acodec^=mp4a]/ba");
     } else if (videoOnlyCheck_->isChecked()) {
-        selector = selectedVideoItag();
+        selector = selectedVideoItag().isEmpty()
+            ? QString::fromLatin1("bv*[vcodec^=avc1]/bv*")
+            : selectedVideoItag() + QString::fromLatin1("/bv*[vcodec^=avc1]/bv*");
+    } else if (selectedVideoItag().isEmpty()) {
+        selector = settings_.formatSelector();
     } else {
         selector = selectedVideoItag();
         if (!selectedAudioItag().isEmpty())
             selector += QString::fromLatin1("+") + selectedAudioItag();
-        selector += QString::fromLatin1("/b[vcodec^=avc1]");
+        selector += QString::fromLatin1("/") + settings_.formatSelector();
     }
     arguments << QString::fromLatin1("-f") << selector;
+
+    // Cutting the sponsors out of the file is yt-dlp's own post-processor,
+    // not something to reimplement around the trim handles.
+    if (removeSponsors_ && removeSponsors_->isChecked()) {
+        arguments << QString::fromLatin1("--sponsorblock-remove")
+                  << QString::fromLatin1("sponsor,selfpromo,interaction,intro,outro");
+    }
 
     if (!audioOnly())
         arguments << QString::fromLatin1("--merge-output-format") << container();

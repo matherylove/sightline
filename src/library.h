@@ -10,8 +10,7 @@
 #include "media_types.h"
 #include "sightline_paths.h"
 
-class QNetworkAccessManager;
-class QNetworkReply;
+class ThumbnailFetcher;
 
 // The whole point of the app: subscriptions, playlists and history live in a
 // JSON file on this disk, not in an account. Linking a Google account only
@@ -77,7 +76,7 @@ signals:
     void thumbnailReady(const QString &videoId);
 
 private slots:
-    void onThumbnailFinished(QNetworkReply *reply);
+    void onThumbnailFetched(const QString &videoId, const QString &filePath);
 
 private:
     QString thumbnailFile(const QString &videoId) const;
@@ -91,9 +90,8 @@ private:
     QHash<QString, qint64> resume_;
     QHash<QString, QStringList> channelVideos_;
 
-    QNetworkAccessManager *network_;
+    ThumbnailFetcher *fetcher_;
     QHash<QString, QPixmap> pixmapCache_;
-    QStringList pendingThumbnails_;
 };
 
 #endif

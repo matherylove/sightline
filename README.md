@@ -18,8 +18,26 @@ para **copiar datos hacia dentro**; nada se escribe de vuelta.
 
 La frontera es deliberada: **Sightline no habla con YouTube**. Las firmas, el parámetro `n`,
 la suplantación de cliente y el PO token cambian cada pocas semanas, así que ese mantenimiento
-pertenece a un proyecto que lo sigue al día. Actualizar la extracción es reemplazar una carpeta,
+pertenece a un proyecto que lo sigue al día. Actualizar la extracción es reemplazar un archivo,
 sin recompilar nada.
+
+El principio se aplica hasta donde llega. Todo lo que yt-dlp o FFmpeg ya resuelven **no se
+reimplementa aquí**:
+
+| Trabajo | Quién lo hace |
+|---|---|
+| Firmas, `n`, clientes InnerTube, PO token | yt-dlp |
+| Búsqueda, canales, listas, comentarios | yt-dlp |
+| **Selección de formato** | el selector de yt-dlp; Sightline solo declara la política |
+| **SponsorBlock** | `--sponsorblock-mark`, dentro de la misma extracción |
+| Quitar patrocinios del archivo | `--sponsorblock-remove`, post-procesador de yt-dlp |
+| Descarga y recorte | `--download-sections`, `--force-keyframes-at-cuts` |
+| Demux, decodificación, remuestreo | FFmpeg |
+| HTTP y TLS hacia googlevideo | FFmpeg (`avio`), Qt solo como reserva |
+| Miniaturas | FFmpeg (`avio`) en un hilo aparte |
+
+Lo que queda para Sightline es lo que nadie más puede hacer por él: la interfaz, la biblioteca
+local, el reloj de reproducción y la presentación de los fotogramas.
 
 ```
 src/
@@ -97,19 +115,43 @@ qmake -spec win32-msvc2017 ..\Sightline.pro CONFIG+=release
 nmake
 ```
 
+## Qué pila de red se usa, y por qué importa
+
+Los builds estáticos de Qt 5.6 que aún apuntan a XP casi nunca llevan OpenSSL enlazado, y Qt
+no tuvo backend de Schannel hasta la 5.14. El resultado es que **toda petición `https://` desde
+Qt falla sin llegar a hacer handshake** — y eso se lleva por delante miniaturas, googlevideo,
+SponsorBlock y OAuth de una vez.
+
+Por eso Sightline decide el transporte **una sola vez al arrancar** y lo enseña en la barra de
+estado, en vez de dejarte redescubrirlo como cuatro misterios distintos:
+
+| Celda | Significa |
+|---|---|
+| `TLS Qt` | Qt tiene OpenSSL. Todo funciona por la ruta normal. |
+| `TLS FFmpeg` | Qt no puede, pero FFmpeg sí. Miniaturas y streams van por `avio`. |
+| `sin TLS` | Ninguno de los dos. Solo yt-dlp llega a la red; no hay reproducción. |
+
+Las miniaturas se bajan en un hilo aparte (`ThumbnailFetcher`) por el transporte que haya, y
+siempre como `hqdefault.jpg`: Qt 5.6 no trae plugin de WebP y una compilación estática no lo va
+a ganar. SponsorBlock, si Qt no puede consultar, sigue aplicando los segmentos que ya tenga en
+disco — la reproducción nunca se bloquea por un servicio externo.
+
 ## Cómo llega el vídeo a la pantalla
 
 YouTube sirve vídeo y audio como archivos separados, así que corren **dos `MediaDecoder`**,
 cada uno con su hilo y su `AVFormatContext`.
 
-Lo que no es obvio: **FFmpeg no abre las URLs**. Cada decodificador va sobre un `AVIOContext`
-propio alimentado por `MediaSource`, que baja los bytes con `QNetworkAccessManager` y peticiones
-`Range`. No es un rodeo — es la única ruta viable en XP. El HTTPS de FFmpeg iría por Schannel,
-que se queda en TLS 1.0, y googlevideo exige 1.2 desde hace años. Qt ya está enlazado contra
-un OpenSSL que controlamos, así que los bytes entran por Qt y FFmpeg solo ve un contexto de E/S
-plano. De paso, un único sitio se encarga del 403 por caducidad: cuando el enlace muere a mitad
-de reproducción, `MediaSource` lo distingue de un fallo de red y el reproductor vuelve a extraer
-y retoma donde ibas, en lugar de mostrarte un error de E/S genérico.
+Hay **dos transportes** y se elige el que funcione. Por defecto `MediaDecoder` deja que
+libavformat abra la URL con su propio HTTP y TLS, que es lo que traen estos builds XP de FFmpeg
+y lo que sigue funcionando cuando Qt no tiene OpenSSL. Si esa apertura falla, reintenta por
+`MediaSource`, un `AVIOContext` propio alimentado desde `QNetworkAccessManager` con peticiones
+`Range`. Ninguna de las dos rutas se anuncia al usuario hasta haber probado las dos.
+
+En la ruta nativa se le pasan a FFmpeg `reconnect`, `reconnect_streamed` y `rw_timeout`: estos
+archivos se sirven por trozos y la conexión se corta entre ellos, así que un stream que se para
+tiene que reconectar en vez de darse por terminado. Y el 403 por caducidad del enlace se
+distingue de un fallo real comparando la posición con la duración — si se corta muy lejos del
+final, se vuelve a extraer y se retoma donde ibas en lugar de mostrarte un error de E/S.
 
 El **audio manda el reloj**: `position()` sale del PTS de audio menos lo que sigue en el búfer
 de DirectSound, o sea lo que el oyente está oyendo de verdad. El vídeo solo lleva el reloj

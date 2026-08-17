@@ -31,6 +31,7 @@
 #include "sightline_window.h"
 #include "sponsorblock.h"
 #include "stats_page.h"
+#include "net_transport.h"
 #include "widgets.h"
 #include "ytdlp_setup.h"
 #include "ytdlp.h"
@@ -113,6 +114,7 @@ bool MainWindow::initialise(QString *error)
     connect(statusTimer_, SIGNAL(timeout()), this, SLOT(onStatusTick()));
     statusTimer_->start(4000);
 
+    NetTransport::probe();
     extractor_->probe();
     showView(FeedView);
     refreshStatusBar();
@@ -539,7 +541,13 @@ void MainWindow::onSearchSubmitted()
 
     if (!searchToken_.isEmpty())
         extractor_->cancel(searchToken_);
-    searchToken_ = extractor_->search(query, 24);
+
+    // Searching from the music view must stay inside YouTube Music, or the
+    // results are ordinary videos and the audio-only path never applies.
+    const bool musicContext = (view_ == MusicView || view_ == StatsView);
+    searchToken_ = musicContext ? extractor_->musicSearch(query, 24)
+                                : extractor_->search(query, 24);
+    currentIsMusic_ = musicContext;
     showView(SearchView, query);
 }
 
@@ -565,7 +573,7 @@ void MainWindow::onRefreshClicked()
 
 void MainWindow::onVideoActivated(const QString &videoId)
 {
-    playVideo(videoId, view_ == MusicView);
+    playVideo(videoId, view_ == MusicView || currentIsMusic_);
 }
 
 void MainWindow::playVideo(const QString &videoId, bool music)
@@ -603,7 +611,10 @@ void MainWindow::playVideo(const QString &videoId, bool music)
         onVideoReady(QString(), video);
     }
 
-    if (settings_.sponsorBlockEnabled && settings_.prefetchSegments)
+    // Segments arrive with the extraction. The standalone client is only
+    // asked when a cached entry predates that, or when the extraction has
+    // not come back yet and something is already on disk.
+    if (settings_.sponsorBlockEnabled && video.segments.isEmpty())
         sponsorBlock_->fetch(videoId);
 
     if (!relatedToken_.isEmpty())
@@ -619,10 +630,24 @@ void MainWindow::onVideoReady(const QString &token, const VideoItem &video)
 
     library_->remember(video);
     currentVideo_ = library_->remembered(video.id);
+    currentVideo_.requested = video.requested;
+    currentVideo_.segments = video.segments;
 
-    const MediaFormat *videoFormat = currentVideo_.bestVideoFormat(
-        settings_.maxHeight, settings_.avcOnly);
-    const MediaFormat *audioFormat = currentVideo_.bestAudioFormat(settings_.preferAacAudio);
+    if (settings_.sponsorBlockEnabled && !video.segments.isEmpty()) {
+        playback_->setSegments(video.segments);
+        player_->setSegments(video.segments);
+        if (pip_)
+            pip_->setSegments(video.segments);
+    }
+
+    // yt-dlp already applied the selector, so its answer is used as-is. The
+    // local walk is only for a cached entry from before this was delegated.
+    const MediaFormat *videoFormat = currentVideo_.selectedVideo();
+    const MediaFormat *audioFormat = currentVideo_.selectedAudio();
+    if (!videoFormat)
+        videoFormat = currentVideo_.bestVideoFormat(settings_.maxHeight, settings_.avcOnly);
+    if (!audioFormat)
+        audioFormat = currentVideo_.bestAudioFormat(settings_.preferAacAudio);
 
     if (!videoFormat && !audioFormat) {
         statusBar_->setState(SightlineStatusBar::Degraded,
@@ -634,8 +659,15 @@ void MainWindow::onVideoReady(const QString &token, const VideoItem &video)
     }
 
     if (currentIsMusic_) {
+        // Audio only: decoding an H.264 track nobody is looking at is the
+        // one thing guaranteed to make music playback stutter on a P4.
         music_->setNowPlaying(currentVideo_);
         videoFormat = 0;
+        if (!audioFormat) {
+            statusBar_->setState(SightlineStatusBar::Degraded,
+                                 QString::fromUtf8("Sin pista de audio"));
+            return;
+        }
     } else {
         player_->setVideo(currentVideo_);
         player_->setSubscribed(library_->isSubscribed(currentVideo_.channelId));
@@ -662,6 +694,12 @@ void MainWindow::onListReady(const QString &token, const QList<VideoItem> &video
 
     if (token == searchToken_) {
         searchToken_.clear();
+        if (currentIsMusic_) {
+            music_->setAlbum(QString::fromUtf8("Resultados en YouTube Music"),
+                             viewArgument_, videos);
+            showView(MusicView);
+            return;
+        }
         grid_->setEmptyText(QString::fromUtf8("Sin resultados."));
         grid_->setVideos(videos);
         return;
@@ -935,9 +973,13 @@ void MainWindow::onStatusTick()
 void MainWindow::formatRowActivated(const QString &itag)
 {
     const MediaFormat *format = currentVideo_.formatByItag(itag);
-    if (!format)
+    if (!format || format->url.isEmpty())
         return;
-    const MediaFormat *audio = currentVideo_.bestAudioFormat(settings_.preferAacAudio);
+
+    const MediaFormat *audio = currentVideo_.selectedAudio();
+    if (!audio)
+        audio = currentVideo_.bestAudioFormat(settings_.preferAacAudio);
+
     playback_->open(currentVideo_, format, audio, playback_->position());
 }
 
@@ -964,8 +1006,13 @@ void MainWindow::refreshStatusBar()
         settings_.potProviderUrl.isEmpty() ? SightlineStatusBar::Degraded
                                            : SightlineStatusBar::Working);
 
-    statusBar_->setCell(3, QString::fromUtf8("SB %1").arg(sponsorBlock_->statusText()),
-        sponsorBlock_->online() ? SightlineStatusBar::Working : SightlineStatusBar::Degraded);
+    statusBar_->setCell(3, NetTransport::kind() == NetTransport::QtSsl
+                              ? QString::fromUtf8("TLS Qt")
+                              : (NetTransport::kind() == NetTransport::FfmpegAvio
+                                     ? QString::fromUtf8("TLS FFmpeg")
+                                     : QString::fromUtf8("sin TLS")),
+        NetTransport::kind() == NetTransport::None ? SightlineStatusBar::Degraded
+                                                   : SightlineStatusBar::Working);
 
     QString detail;
     if (!lastError_.isEmpty()) {
@@ -977,6 +1024,9 @@ void MainWindow::refreshStatusBar()
             .arg(QString::number(qMax(0.0, playback_->buffered() - playback_->position()), 'f', 1));
     } else if (degraded) {
         detail = extractor_->chainSummary();
+    } else if (NetTransport::kind() == NetTransport::None) {
+        detail = QString::fromUtf8(
+            "Qt no tiene OpenSSL y FFmpeg tampoco trae TLS: sin miniaturas ni reproducción.");
     } else {
         detail = QString::fromUtf8("Biblioteca: %1 canales \xC2\xB7 %2 listas")
             .arg(library_->channels().size())

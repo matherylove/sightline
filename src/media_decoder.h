@@ -38,8 +38,15 @@ public:
     MediaDecoder(Kind kind, QObject *parent = 0);
     ~MediaDecoder();
 
+    // How the bytes are obtained. Native lets libavformat open the URL with
+    // its own HTTP and TLS, which is what these XP FFmpeg builds carry and
+    // what works when Qt has no OpenSSL. QtBridge feeds a custom AVIOContext
+    // from QNetworkAccessManager instead, kept as the fallback for a build
+    // where FFmpeg was compiled without a TLS backend.
+    enum Transport { NativeIo, QtBridgeIo };
+
     // Opens on the calling thread, then start() runs the decode loop.
-    bool openStream(const QString &url, QString *error);
+    bool openStream(const QString &url, QString *error, Transport transport = NativeIo);
     void stop();
 
     void requestSeek(double seconds);
@@ -90,6 +97,7 @@ private:
 
     Kind kind_;
     MediaSource *source_;
+    Transport transport_;
 
     AVFormatContext *format_;
     AVIOContext *avio_;

@@ -73,6 +73,29 @@ AppSettings::AppSettings()
     segmentAction[SponsorSegment::UnknownCategory] = SegmentIgnore;
 }
 
+QString AppSettings::formatSelector() const
+{
+    // Read outwards: best H.264 video within the height cap plus best AAC
+    // audio; then the same without the codec constraint; then whatever 
+    // single muxed file exists. itag 18 is the last of these and is what
+    // still comes back when no PO token provider is configured.
+    const QString heightClause = maxHeight > 0
+        ? QString::fromLatin1("[height<=?%1]").arg(maxHeight)
+        : QString();
+
+    QString selector;
+    if (avcOnly) {
+        selector = QString::fromLatin1("bv*[vcodec^=avc1]%1+ba[acodec^=mp4a]/")
+                       .arg(heightClause);
+        selector += QString::fromLatin1("bv*[vcodec^=avc1]%1+ba/").arg(heightClause);
+        selector += QString::fromLatin1("b[vcodec^=avc1]%1/").arg(heightClause);
+    } else {
+        selector = QString::fromLatin1("bv*%1+ba/").arg(heightClause);
+    }
+    selector += QString::fromLatin1("b%1/b").arg(heightClause);
+    return selector;
+}
+
 SegmentAction AppSettings::actionFor(SponsorSegment::Category category) const
 {
     const int index = int(category);

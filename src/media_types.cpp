@@ -254,6 +254,30 @@ bool VideoItem::urlsLikelyExpired() const
     return urlsFetchedAt.secsTo(QDateTime::currentDateTimeUtc()) > 5 * 3600;
 }
 
+const MediaFormat *VideoItem::selectedVideo() const
+{
+    for (int i = 0; i < requested.size(); ++i) {
+        if (requested.at(i).hasVideo())
+            return &requested.at(i);
+    }
+    return 0;
+}
+
+const MediaFormat *VideoItem::selectedAudio() const
+{
+    // A muxed file carries both, and yt-dlp returns it as a single entry;
+    // in that case the video format is also the audio format.
+    for (int i = 0; i < requested.size(); ++i) {
+        if (requested.at(i).hasAudio() && !requested.at(i).hasVideo())
+            return &requested.at(i);
+    }
+    for (int i = 0; i < requested.size(); ++i) {
+        if (requested.at(i).hasAudio())
+            return &requested.at(i);
+    }
+    return 0;
+}
+
 const MediaFormat *VideoItem::bestVideoFormat(int maxHeight, bool avcOnly) const
 {
     const MediaFormat *best = 0;

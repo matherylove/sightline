@@ -1,5 +1,6 @@
 #include "ytdlp_setup.h"
 
+#include <QApplication>
 #include <QDesktopServices>
 #include <QDir>
 #include <QFile>
@@ -15,6 +16,7 @@
 #include <QVBoxLayout>
 
 #include "sightline_paint.h"
+#include "net_transport.h"
 #include "sightline_style.h"
 
 #ifdef Q_OS_WIN
@@ -224,8 +226,19 @@ YtDlpSetupDialog::YtDlpSetupDialog(const QString &targetDirectory, QWidget *pare
 
     layout->addLayout(buttons);
 
-    statusLabel_->setText(QString::fromUtf8(
-        "Se descargará desde github.com/nicolaasjan/yt-dlp (unos 17 MB)."));
+    if (NetTransport::kind() == NetTransport::None) {
+        downloadButton_->setEnabled(false);
+        statusLabel_->setText(QString::fromUtf8(
+            "Ni Qt ni FFmpeg pueden hacer TLS en este equipo, así que la descarga "
+            "automática no es posible. Baja el archivo a mano y déjalo junto a "
+            "Sightline.exe con el nombre yt-dlp.exe."));
+    } else {
+        statusLabel_->setText(QString::fromUtf8(
+            "Se descargará desde github.com/nicolaasjan/yt-dlp (unos 17 MB) usando %1.")
+            .arg(NetTransport::kind() == NetTransport::QtSsl
+                     ? QString::fromLatin1("Qt")
+                     : QString::fromLatin1("FFmpeg")));
+    }
 }
 
 void YtDlpSetupDialog::setBusy(bool busy)
@@ -261,6 +274,44 @@ void YtDlpSetupDialog::onDownload()
 
     setBusy(true);
     statusLabel_->setText(QString::fromUtf8("Conectando con GitHub…"));
+
+    if (!NetTransport::qtCanDoTls()) {
+        // Qt has no TLS, so the transfer goes through FFmpeg's protocol
+        // layer. It blocks, but a 17 MB one-off at first run is a fair
+        // trade against not being able to install the extractor at all.
+        QApplication::setOverrideCursor(Qt::WaitCursor);
+        QString fetchError;
+        const QByteArray payload = NetTransport::fetch(
+            YtDlpVariant::downloadUrl(), &fetchError, 120000);
+        QApplication::restoreOverrideCursor();
+
+        setBusy(false);
+        if (payload.isEmpty()) {
+            file_->close();
+            file_->remove();
+            delete file_;
+            file_ = 0;
+            statusLabel_->setText(QString::fromUtf8("No se pudo descargar: ") + fetchError);
+            return;
+        }
+
+        file_->write(payload);
+        file_->close();
+        const QString tempName = file_->fileName();
+        delete file_;
+        file_ = 0;
+
+        const QString target = tempName.left(tempName.size() - 5);
+        QFile::remove(target);
+        if (!QFile::rename(tempName, target)) {
+            statusLabel_->setText(QString::fromUtf8(
+                "Se descargó pero no se pudo renombrar a yt-dlp.exe."));
+            return;
+        }
+        installedPath_ = QDir::toNativeSeparators(target);
+        accept();
+        return;
+    }
 
     QNetworkRequest request((QUrl(YtDlpVariant::downloadUrl())));
     request.setAttribute(QNetworkRequest::FollowRedirectsAttribute, true);
