@@ -109,7 +109,7 @@ StatsPage::StatsPage(ListeningStats *stats, QWidget *parent)
 
     periodButtons_ = new QButtonGroup(this);
     periodButtons_->setExclusive(true);
-    const char *periods[] = { "Hoy", "30 d\xC3\xADas", "A\xC3\xB1o", "Siempre" };
+    const char *periods[] = { "Hoy", "30 d\xC3\xAD""as", "A\xC3\xB1o", "Siempre" };
     for (int i = 0; i < 4; ++i) {
         QPushButton *button = new QPushButton(QString::fromUtf8(periods[i]), this);
         button->setObjectName(QString::fromLatin1("segButton"));

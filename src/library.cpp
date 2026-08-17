@@ -587,7 +587,7 @@ QPixmap Library::thumbnail(const VideoItem &video)
 
     if (!pendingThumbnails_.contains(video.id)) {
         pendingThumbnails_.append(video.id);
-        QNetworkRequest request(QUrl(url));
+        QNetworkRequest request((QUrl(url)));
         request.setAttribute(QNetworkRequest::FollowRedirectsAttribute, true);
         request.setRawHeader("User-Agent", "Sightline/0.1");
         QNetworkReply *reply = network_->get(request);

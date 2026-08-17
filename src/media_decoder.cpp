@@ -5,9 +5,16 @@
 #include "media_source.h"
 
 extern "C" {
+// Listed explicitly rather than relying on avformat.h and avcodec.h dragging
+// them in: the transitive set has shifted between FFmpeg majors before, and a
+// missing macro shows up as a confusing "undeclared identifier" much later.
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
+#include <libavformat/avio.h>
+#include <libavutil/channel_layout.h>
+#include <libavutil/error.h>
 #include <libavutil/imgutils.h>
+#include <libavutil/mem.h>
 #include <libavutil/opt.h>
 #include <libswresample/swresample.h>
 #include <libswscale/swscale.h>

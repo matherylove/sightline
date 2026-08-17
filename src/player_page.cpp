@@ -873,7 +873,7 @@ void PlayerPage::refreshOverlay()
         lines << line;
     }
     lines << QString::fromUtf8("Decodificaci\xC3\xB3n software (XP no expone DXVA2)");
-    lines << QString::fromUtf8("B\xC3\xBAfer %1 s \xC2\xB7 reloj maestro: audio")
+    lines << QString::fromUtf8("B\xC3\xBA""fer %1 s \xC2\xB7 reloj maestro: audio")
                  .arg(QString::number(qMax(0.0, playback_->buffered() - playback_->position()), 'f', 1));
     surface_->setOverlayLines(lines);
 }
