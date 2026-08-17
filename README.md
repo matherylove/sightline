@@ -63,8 +63,11 @@ que una descarga cortada nunca deje un ejecutable truncado.
 **Además, junto al ejecutable:**
 
 - **Las DLL de FFmpeg 7.1** (`avcodec-61.dll`, `avformat-61.dll`, `avutil-59.dll`,
-  `swscale-8.dll`, `swresample-5.dll`). El paquete `-dev` de este repo solo trae los `.h`
-  y los `.lib` de importación; las DLL vienen en el paquete `-shared` del mismo build.
+  `swscale-8.dll`, `swresample-5.dll`), del paquete `-shared` del mismo build. En el repo
+  viven en `third_party/ffmpeg/`, junto a `include/` y `lib/`. `avcodec-61.dll` pasa de los
+  100 MB que admite GitHub, así que se guarda comprimido como `.7z` en esa misma carpeta y
+  el workflow lo extrae antes de compilar; si falta alguna de las cinco, el build falla ahí
+  con el nombre exacto en vez de producir un `.exe` que muere al arrancar.
 - **`qjs.exe`** (quickjs-ng), opcional pero importante. Node y Deno no arrancan en XP;
   QuickJS es C99 y sí compila. Sin él, yt-dlp cae a su intérprete interno: más lento y más
   frágil, pero funcional. La barra de estado te dice cuál está en uso.
