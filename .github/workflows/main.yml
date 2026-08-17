@@ -1,0 +1,133 @@
+name: Build Sightline
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  QT_ARCHIVE_URL: https://github.com/lighterowl/qt563xp/releases/download/1.2/Qt-5.6.3-Static-XP.7z
+  QT_ROOT: C:\Qt\5.6.3-Static-XP
+  VS2017_PATH: C:\BuildTools2017
+
+jobs:
+  sightline:
+    name: Sightline.exe
+    runs-on: windows-2022
+    timeout-minutes: 55
+    env:
+      BUILD_DIR: ${{ github.workspace }}\build
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Download Qt
+        shell: pwsh
+        run: |
+          Invoke-WebRequest -Uri "${env:QT_ARCHIVE_URL}" -OutFile "${env:RUNNER_TEMP}\qt-xp.7z"
+
+      - name: Extract Qt
+        shell: pwsh
+        run: |
+          if (Test-Path "${env:QT_ROOT}") { Remove-Item "${env:QT_ROOT}" -Recurse -Force }
+          New-Item -ItemType Directory -Path "C:\Qt" -Force | Out-Null
+          & "C:\Program Files\7-Zip\7z.exe" x "${env:RUNNER_TEMP}\qt-xp.7z" "-oC:\Qt" -y
+          $qmake = "${env:QT_ROOT}\bin\qmake.exe"
+          $spec = "${env:QT_ROOT}\mkspecs\win32-msvc2017\qmake.conf"
+          if (-not (Test-Path $qmake)) { throw "qmake.exe was not found at $qmake" }
+          if (-not (Test-Path $spec)) { throw "qmake.conf was not found at $spec" }
+          & $qmake -v
+          & $qmake -query QT_INSTALL_PREFIX
+          & $qmake -query QMAKE_SPEC
+
+      - name: Install Visual Studio 2017 XP build tools
+        shell: pwsh
+        run: |
+          $bootstrapper = "${env:RUNNER_TEMP}\vs_buildtools_2017.exe"
+          Invoke-WebRequest -Uri "https://aka.ms/vs/15/release/vs_buildtools.exe" -OutFile $bootstrapper
+          $arguments = @(
+            "--quiet",
+            "--wait",
+            "--norestart",
+            "--nocache",
+            "--installPath", "${env:VS2017_PATH}",
+            "--add", "Microsoft.VisualStudio.Workload.VCTools",
+            "--add", "Microsoft.VisualStudio.Component.VC.v141.x86.x64",
+            "--add", "Microsoft.VisualStudio.Component.WinXP"
+          )
+          $process = Start-Process -FilePath $bootstrapper -ArgumentList $arguments -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw "VS 2017 Build Tools installer failed with exit code $($process.ExitCode)" }
+
+      - name: Generate Makefile
+        shell: cmd
+        run: |
+          call "%VS2017_PATH%\VC\Auxiliary\Build\vcvarsall.bat" x86
+          if exist "%BUILD_DIR%" rmdir /S /Q "%BUILD_DIR%"
+          mkdir "%BUILD_DIR%"
+          cd /d "%BUILD_DIR%"
+          "%QT_ROOT%\bin\qmake.exe" -spec "%QT_ROOT%\mkspecs\win32-msvc2017" ..\Sightline.pro CONFIG+=release
+          if not exist Makefile exit /b 1
+
+      - name: Build
+        shell: cmd
+        run: |
+          call "%VS2017_PATH%\VC\Auxiliary\Build\vcvarsall.bat" x86
+          cd /d "%BUILD_DIR%"
+          nmake
+
+      - name: Verify XP subsystem version
+        shell: pwsh
+        run: |
+          # A binary that links but reports subsystem 6.0 will refuse to start
+          # on XP with "not a valid Win32 application", so this is checked in
+          # CI rather than discovered on the target machine.
+          $exe = Get-ChildItem -Path "${env:BUILD_DIR}" -Filter Sightline.exe -Recurse | Select-Object -First 1
+          if (-not $exe) { throw "Sightline.exe was not produced" }
+          $bytes = [System.IO.File]::ReadAllBytes($exe.FullName)
+          $peOffset = [BitConverter]::ToInt32($bytes, 0x3C)
+          $major = [BitConverter]::ToUInt16($bytes, $peOffset + 0x48)
+          $minor = [BitConverter]::ToUInt16($bytes, $peOffset + 0x4A)
+          Write-Host "Subsystem version: $major.$minor"
+          if ($major -ne 5 -or $minor -ne 1) { throw "Expected subsystem 5.1 for Windows XP, got $major.$minor" }
+
+      - name: Stage release layout
+        shell: pwsh
+        run: |
+          $stage = "${env:GITHUB_WORKSPACE}\stage"
+          New-Item -ItemType Directory -Path "$stage\tools" -Force | Out-Null
+          $exe = Get-ChildItem -Path "${env:BUILD_DIR}" -Filter Sightline.exe -Recurse | Select-Object -First 1
+          Copy-Item $exe.FullName "$stage\Sightline.exe"
+          Copy-Item "${env:GITHUB_WORKSPACE}\README.md" "$stage\LEEME.md" -ErrorAction SilentlyContinue
+          # tools\ is where yt-dlp.exe and qjs.exe are dropped by the user;
+          # shipping the folder with a note beats an app that starts with a
+          # missing-binary error and no hint about where the file should go.
+          Set-Content -Path "$stage\tools\COLOCA-AQUI-YT-DLP.txt" -Encoding UTF8 -Value @"
+Coloca aqui yt-dlp.exe y, opcionalmente, qjs.exe (quickjs-ng).
+
+yt-dlp para Windows XP:
+  https://github.com/nicolaasjan/yt-dlp/releases
+
+Usa la variante onedir si esta disponible: el paquete onefile se
+descomprime entero en %TEMP% en cada llamada y en XP eso cuesta varios
+segundos por accion.
+
+qjs.exe es el motor JavaScript. Node y Deno no arrancan en XP; QuickJS
+es C99 y si compila. Sin el, yt-dlp cae a su interprete interno: mas
+lento, pero funcional.
+
+Para calidad completa hace falta un proveedor de PO tokens en otra
+maquina de la red (bgutil-ytdlp-pot-provider en modo servidor HTTP).
+Se configura en Herramientas -> Cadena de extraccion.
+"@
+
+      - name: Upload executable
+        uses: actions/upload-artifact@v4
+        with:
+          name: Sightline-Windows-XP-x86
+          path: stage\**
+          if-no-files-found: error
