@@ -5,6 +5,8 @@
 #include "audio_sink.h"
 #include "media_decoder.h"
 #include "net_transport.h"
+#include "d3d9_presenter.h"
+#include "sync_clock.h"
 
 namespace {
 const int kTickMs = 100;
@@ -25,17 +27,52 @@ PlaybackController::PlaybackController(QObject *parent)
       hasUndo_(false),
       tickAccumulator_(0.0),
       clock_(0),
-      videoDecoder_(0), audioDecoder_(0), audioSink_(0), endedStreams_(0)
+      videoDecoder_(0), audioDecoder_(0), audioSink_(0), sync_(0), presenter_(0), surfaceWindow_(0), endedStreams_(0)
 {
     clock_ = new QTimer(this);
     clock_->setInterval(kTickMs);
     connect(clock_, SIGNAL(timeout()), this, SLOT(onTick()));
     audioSink_ = new AudioSink(this);
+    sync_ = new SyncClock;
+    presenter_ = new D3D9Presenter;
 }
 
 PlaybackController::~PlaybackController()
 {
     close();
+    delete sync_;
+    delete presenter_;
+}
+
+void PlaybackController::attachSurface(WId window, const QSize &clientSize)
+{
+    surfaceWindow_ = window;
+    surfaceSize_ = clientSize;
+    if (presenter_ && presenter_->isReady())
+        presenter_->resize(clientSize);
+}
+
+void PlaybackController::detachSurface()
+{
+    surfaceWindow_ = 0;
+    if (presenter_)
+        presenter_->shutdown();
+}
+
+QString PlaybackController::presenterDescription() const
+{
+    return presenter_ ? presenter_->describe() : QString();
+}
+
+bool PlaybackController::usingGpuPresentation() const
+{
+    return presenter_ && presenter_->isReady() && presenter_->usingOverlayFormat();
+}
+
+void PlaybackController::acknowledgeFrame()
+{
+    if (videoDecoder_)
+        videoDecoder_->acknowledgeFrame();
 }
 
 bool PlaybackController::decoding() const
@@ -48,6 +85,8 @@ void PlaybackController::setTargetSurfaceSize(const QSize &size)
     surfaceSize_ = size;
     if (videoDecoder_)
         videoDecoder_->setTargetSize(size);
+    if (presenter_ && presenter_->isReady())
+        presenter_->resize(size);
 }
 
 void PlaybackController::applySettings(const AppSettings &settings)
@@ -104,6 +143,8 @@ void PlaybackController::open(const VideoItem &video, const MediaFormat *videoFo
     emit positionChanged(position_);
     emit bufferedChanged(buffered_);
     endedStreams_ = 0;
+    sync_->reset(position_);
+    sync_->stopFreeRun();
 
     QString error;
 
@@ -131,6 +172,7 @@ void PlaybackController::open(const VideoItem &video, const MediaFormat *videoFo
                                                MediaDecoder::QtBridgeIo);
         }
         if (opened) {
+            audioDecoder_->setSyncClock(sync_);
             audioSink_->start(audioDecoder_->sampleRate(), audioDecoder_->channelCount());
             audioSink_->setVolume(volume_);
             audioDecoder_->start();
@@ -161,6 +203,25 @@ void PlaybackController::open(const VideoItem &video, const MediaFormat *videoFo
                                                     MediaDecoder::QtBridgeIo);
         }
         if (videoOpened) {
+            videoDecoder_->setSyncClock(sync_);
+
+            // The device is built once the real frame size is known, so the
+            // offscreen surface matches the stream exactly and StretchRect
+            // does the resize in one step.
+            if (surfaceWindow_ && videoDecoder_->width() > 0) {
+                QString presenterError;
+                if (presenter_->initialise(surfaceWindow_,
+                                           QSize(videoDecoder_->width(), videoDecoder_->height()),
+                                           &presenterError)) {
+                    presenter_->resize(surfaceSize_);
+                    videoDecoder_->setPresenter(presenter_);
+                }
+            }
+            // With no audio track there is nothing to follow, so the clock
+            // free-runs from a monotonic timer and the video paces itself
+            // against real time instead of decoding flat out.
+            if (!audioDecoder_)
+                sync_->startFreeRun(position_);
             videoDecoder_->start();
         } else {
             delete videoDecoder_;
@@ -182,10 +243,13 @@ void PlaybackController::close()
     clock_->stop();
 
     if (videoDecoder_) {
+        videoDecoder_->setPresenter(0);
         videoDecoder_->stop();
         delete videoDecoder_;
         videoDecoder_ = 0;
     }
+    if (presenter_)
+        presenter_->shutdown();
     if (audioDecoder_) {
         audioDecoder_->stop();
         delete audioDecoder_;
@@ -193,6 +257,10 @@ void PlaybackController::close()
     }
     if (audioSink_)
         audioSink_->stop();
+    if (sync_) {
+        sync_->stopFreeRun();
+        sync_->reset(0.0);
+    }
     endedStreams_ = 0;
 
     segments_.clear();
@@ -209,6 +277,7 @@ void PlaybackController::play()
     if (video_.id.isEmpty())
         return;
     clock_->start();
+    sync_->setPaused(false);
     if (videoDecoder_) videoDecoder_->setPaused(false);
     if (audioDecoder_) audioDecoder_->setPaused(false);
     if (audioSink_) audioSink_->setPaused(false);
@@ -218,6 +287,7 @@ void PlaybackController::play()
 void PlaybackController::pause()
 {
     clock_->stop();
+    sync_->setPaused(true);
     if (videoDecoder_) videoDecoder_->setPaused(true);
     if (audioDecoder_) audioDecoder_->setPaused(true);
     if (audioSink_) audioSink_->setPaused(true);
@@ -246,6 +316,7 @@ void PlaybackController::seek(double seconds)
     // to is no longer where the user was.
     hasUndo_ = false;
 
+    sync_->reset(position_);
     if (videoDecoder_) videoDecoder_->requestSeek(position_);
     if (audioDecoder_) audioDecoder_->requestSeek(position_);
 
@@ -303,15 +374,18 @@ void PlaybackController::onTick()
     // is actually hearing. Wall time is only the fallback for a stream with
     // no audio track at all.
     if (audioDecoder_) {
+        // What the listener is actually hearing: the decoded position minus
+        // whatever is still sitting in the DirectSound ring.
         const double heard = audioDecoder_->clock() - audioSink_->latencySeconds();
         if (heard > 0.0) {
             delta = heard - position_;
             position_ = heard;
+            sync_->set(heard);
         } else {
             position_ += delta;
         }
     } else if (videoDecoder_) {
-        const double shown = videoDecoder_->clock();
+        const double shown = sync_->get();
         if (shown > 0.0) {
             delta = shown - position_;
             position_ = shown;

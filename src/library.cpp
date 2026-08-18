@@ -68,7 +68,7 @@ Library::Library(const SightlinePaths &paths, QObject *parent)
     fetcher_ = new ThumbnailFetcher(paths_.thumbnails(), this);
     connect(fetcher_, SIGNAL(fetched(QString, QString)),
             this, SLOT(onThumbnailFetched(QString, QString)), Qt::QueuedConnection);
-    fetcher_->start(QThread::LowPriority);
+    fetcher_->start();
 }
 
 QString Library::watchLaterId() { return QString::fromLatin1("local:watchlater"); }
@@ -584,6 +584,42 @@ QPixmap Library::thumbnail(const VideoItem &video)
     // thumbnailReady arrives, so nothing blocks here.
     fetcher_->request(video.id, video.thumbnailUrl);
     return QPixmap();
+}
+
+QPixmap Library::channelAvatar(const ChannelItem &channel)
+{
+    if (channel.id.isEmpty())
+        return QPixmap();
+
+    const QString key = QString::fromLatin1("ch_") + channel.id;
+    if (pixmapCache_.contains(key))
+        return pixmapCache_.value(key);
+
+    const QString path = thumbnailFile(key);
+    if (QFileInfo(path).isFile()) {
+        QPixmap pixmap;
+        if (pixmap.load(path)) {
+            pixmapCache_.insert(key, pixmap);
+            return pixmap;
+        }
+    }
+
+    if (!channel.avatarUrl.isEmpty())
+        fetcher_->request(key, channel.avatarUrl);
+    return QPixmap();
+}
+
+void Library::rememberChannelAvatar(const QString &channelId, const QString &url)
+{
+    if (channelId.isEmpty() || url.isEmpty())
+        return;
+    for (int i = 0; i < channels_.size(); ++i) {
+        if (channels_.at(i).id == channelId) {
+            channels_[i].avatarUrl = url;
+            break;
+        }
+    }
+    fetcher_->request(QString::fromLatin1("ch_") + channelId, url);
 }
 
 void Library::onThumbnailFetched(const QString &videoId, const QString &filePath)

@@ -4,6 +4,7 @@
 #include <QMutex>
 #include <QQueue>
 #include <QStringList>
+#include <QList>
 #include <QThread>
 #include <QWaitCondition>
 
@@ -19,7 +20,13 @@
 // hqdefault.jpg is requested rather than the WebP variants YouTube prefers
 // now, because Qt 5.6 ships no WebP image plugin and a static build will
 // not gain one.
-class ThumbnailFetcher : public QThread
+class ThumbnailWorker;
+
+// The queue is shared by a small pool of workers. One at a time made a grid
+// of twenty-four cards fill in visibly one by one over several seconds; three
+// concurrent fetches make it feel immediate without opening enough sockets to
+// matter on an XP-era stack.
+class ThumbnailFetcher : public QObject
 {
     Q_OBJECT
 
@@ -30,15 +37,18 @@ public:
     void request(const QString &videoId, const QString &url);
     void cancelPending();
     void shutdown();
+    void start();
 
 signals:
     void fetched(const QString &videoId, const QString &filePath);
     void failed(const QString &videoId, const QString &message);
 
-protected:
-    void run();
-
 private:
+    friend class ThumbnailWorker;
+    bool takeJob(QString *videoId, QString *url);
+    void runWorker();
+
+    QList<ThumbnailWorker *> workers_;
     QString cacheDirectory_;
     QQueue<QPair<QString, QString> > queue_;
     QStringList queued_;

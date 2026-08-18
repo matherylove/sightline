@@ -243,6 +243,8 @@ AccountState SettingsStore::loadAccount() const
     account.accessToken = root.value(QString::fromLatin1("accessToken")).toString();
     account.accessTokenExpiry = qint64(root.value(QString::fromLatin1("accessTokenExpiry")).toDouble(0));
     account.lastImportSummary = root.value(QString::fromLatin1("lastImportSummary")).toString();
+    account.clientId = root.value(QString::fromLatin1("clientId")).toString();
+    account.clientSecret = root.value(QString::fromLatin1("clientSecret")).toString();
     return account;
 }
 
@@ -255,6 +257,8 @@ bool SettingsStore::saveAccount(const AccountState &account, QString *error) con
     root.insert(QString::fromLatin1("accessToken"), account.accessToken);
     root.insert(QString::fromLatin1("accessTokenExpiry"), double(account.accessTokenExpiry));
     root.insert(QString::fromLatin1("lastImportSummary"), account.lastImportSummary);
+    root.insert(QString::fromLatin1("clientId"), account.clientId);
+    root.insert(QString::fromLatin1("clientSecret"), account.clientSecret);
     return writeJson(paths_.credentialsFile(), root, error);
 }
 

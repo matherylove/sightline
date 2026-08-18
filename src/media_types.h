@@ -2,6 +2,7 @@
 #define SIGHTLINE_MEDIA_TYPES_H
 
 #include <QDateTime>
+#include <QMetaType>
 #include <QList>
 #include <QString>
 #include <QStringList>
@@ -202,5 +203,11 @@ struct LyricLine
 
     bool synced() const { return time >= 0.0; }
 };
+
+Q_DECLARE_METATYPE(VideoItem)
+Q_DECLARE_METATYPE(ChannelItem)
+Q_DECLARE_METATYPE(PlaylistItem)
+Q_DECLARE_METATYPE(VideoComment)
+Q_DECLARE_METATYPE(SponsorSegment)
 
 #endif

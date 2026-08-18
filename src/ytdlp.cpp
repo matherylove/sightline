@@ -215,6 +215,11 @@ QString YtDlp::musicSearch(const QString &query, int limit)
     return enqueue(job);
 }
 
+QString YtDlp::channelInfo(const QString &channelId)
+{
+    return enqueue(new YtDlpJob(YtDlpJob::ChannelInfo, channelId, this));
+}
+
 QString YtDlp::channelFeed(const QString &channelId, int limit)
 {
     YtDlpJob *job = new YtDlpJob(YtDlpJob::ChannelFeed, channelId, this);
@@ -397,6 +402,17 @@ QStringList YtDlp::argumentsFor(const YtDlpJob *job) const
         break;
     }
 
+    case YtDlpJob::ChannelInfo:
+        // playlist-items 0 asks for the channel's own metadata and none of
+        // its videos, which is the cheapest way to reach the avatar without
+        // paying for a full listing.
+        arguments << QString::fromLatin1("--dump-single-json")
+                  << QString::fromLatin1("--playlist-items") << QString::fromLatin1("0")
+                  << (job->target().startsWith(QLatin1String("http"))
+                          ? job->target()
+                          : QString::fromLatin1("https://www.youtube.com/channel/") + job->target());
+        break;
+
     case YtDlpJob::ChannelFeed:
         arguments << QString::fromLatin1("--dump-json")
                   << QString::fromLatin1("--flat-playlist")
@@ -527,6 +543,37 @@ void YtDlp::finish(QProcess *process, int exitCode)
                     emit failed(token, QString::fromUtf8("La respuesta de yt-dlp no era JSON válido."));
                 else
                     emit videoReady(token, videoFromJson(objects.first()));
+            } else if (kind == YtDlpJob::ChannelInfo) {
+                const QList<QJsonObject> objects = parseJsonLines(running.stdOut);
+                ChannelItem channel;
+                if (!objects.isEmpty()) {
+                    const QJsonObject o = objects.first();
+                    channel.id = stringValue(o, "channel_id");
+                    if (channel.id.isEmpty())
+                        channel.id = stringValue(o, "id");
+                    channel.name = stringValue(o, "channel");
+                    if (channel.name.isEmpty())
+                        channel.name = stringValue(o, "title");
+                    channel.subscriberCount = intValue(o, "channel_follower_count");
+
+                    // Avatars are square; the widest square entry wins, and
+                    // WebP is skipped because Qt 5.6 cannot decode it.
+                    const QJsonArray thumbs = o.value(QLatin1String("thumbnails")).toArray();
+                    int best = 0;
+                    for (int i = 0; i < thumbs.size(); ++i) {
+                        const QJsonObject t = thumbs.at(i).toObject();
+                        const QString url = stringValue(t, "url");
+                        const int w = int(intValue(t, "width"));
+                        const int h = int(intValue(t, "height"));
+                        if (url.isEmpty() || url.contains(QLatin1String(".webp")))
+                            continue;
+                        if (w > 0 && h > 0 && qAbs(w - h) <= 2 && w > best && w <= 512) {
+                            best = w;
+                            channel.avatarUrl = url;
+                        }
+                    }
+                }
+                emit channelReady(token, channel);
             } else if (kind == YtDlpJob::Comments) {
                 const QList<QJsonObject> objects = parseJsonLines(running.stdOut);
                 QList<VideoComment> comments;

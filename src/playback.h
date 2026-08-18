@@ -5,6 +5,7 @@
 #include <QList>
 #include <QObject>
 #include <QSize>
+#include <QWindowDefs>
 #include <QString>
 
 #include "app_settings.h"
@@ -13,6 +14,8 @@
 class QTimer;
 class MediaDecoder;
 class AudioSink;
+class SyncClock;
+class D3D9Presenter;
 
 // The playback clock and the SponsorBlock skip logic.
 //
@@ -69,6 +72,15 @@ public:
     double networkRate() const { return networkRate_; }
 
     void setTargetSurfaceSize(const QSize &size);
+
+    // Called by the view once a frame has been painted.
+    void acknowledgeFrame();
+
+    // Attaches the video canvas so frames can be blitted straight to it.
+    void attachSurface(WId window, const QSize &clientSize);
+    void detachSurface();
+    QString presenterDescription() const;
+    bool usingGpuPresentation() const;
     bool decoding() const;
 
     void setSegments(const QList<SponsorSegment> &segments);
@@ -132,6 +144,9 @@ private:
     MediaDecoder *videoDecoder_;
     MediaDecoder *audioDecoder_;
     AudioSink *audioSink_;
+    SyncClock *sync_;
+    D3D9Presenter *presenter_;
+    WId surfaceWindow_;
     QSize surfaceSize_;
     int endedStreams_;
 };

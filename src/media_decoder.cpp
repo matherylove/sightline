@@ -3,6 +3,8 @@
 #include <QSize>
 
 #include "media_source.h"
+#include "d3d9_presenter.h"
+#include "sync_clock.h"
 
 extern "C" {
 // Listed explicitly rather than relying on avformat.h and avcodec.h dragging
@@ -41,7 +43,9 @@ QString avError(int code)
 
 MediaDecoder::MediaDecoder(Kind kind, QObject *parent)
     : QThread(parent),
-      kind_(kind), source_(0), transport_(NativeIo),
+      kind_(kind), source_(0), sync_(0), presenter_(0),
+      lowLatency_(false), lateFrames_(0), transport_(NativeIo),
+      ringIndex_(0),
       format_(0), avio_(0), codec_(0), scaler_(0), resampler_(0),
       frame_(0), scaled_(0), packet_(0), ioBuffer_(0), scaledBuffer_(0),
       streamIndex_(-1),
@@ -304,6 +308,8 @@ void MediaDecoder::setPaused(bool paused)
     paused_ = paused;
     locker.unlock();
     wake_.wakeAll();
+    if (sync_ && kind_ == VideoStream)
+        sync_->setPaused(paused);
 }
 
 void MediaDecoder::setTargetSize(const QSize &size)
@@ -338,8 +344,14 @@ QByteArray MediaDecoder::takeAudio(int maxBytes)
     // decoded: that is what makes audio the master and keeps video honest.
     if (sampleRate_ > 0 && channels_ > 0)
         clock_ += double(count) / double(sampleRate_ * channels_ * 2);
+    const double now = clock_;
 
     locker.unlock();
+
+    // The shared clock is what the video thread paces against, so it is
+    // advanced here rather than by a timer that only approximates it.
+    if (sync_)
+        sync_->set(now);
     wake_.wakeAll();
     return chunk;
 }
@@ -353,13 +365,110 @@ void MediaDecoder::performSeek()
     clock_ = target;
     locker.unlock();
 
+    framesInFlight_.store(0);
+
     const qint64 timestamp = qint64(target / (timeBase_ > 0.0 ? timeBase_ : 1.0));
     if (av_seek_frame(format_, streamIndex_, timestamp, AVSEEK_FLAG_BACKWARD) >= 0)
         avcodec_flush_buffers(codec_);
 }
 
+void MediaDecoder::acknowledgeFrame()
+{
+    if (framesInFlight_.load() > 0)
+        framesInFlight_.deref();
+}
+
+// Holds the decoder thread until this frame is actually due, and reports
+// false when the frame is so late that showing it would only make the drift
+// worse. Returning false is a dropped frame, which is the correct answer on
+// a machine that cannot keep up: audio stays continuous and the picture
+// catches up instead of the whole stream sliding.
+bool MediaDecoder::waitUntilDue(double presentationTime)
+{
+    if (!sync_ || presentationTime <= 0.0)
+        return true;
+
+    while (true) {
+        QMutexLocker locker(&mutex_);
+        if (stopping_ || seekPending_)
+            return false;
+        const bool paused = paused_;
+        locker.unlock();
+
+        const double now = sync_->get();
+        const double delay = presentationTime - now;
+
+        // More than a fifth of a second late: the frame is history. Drop it
+        // rather than emitting a burst that the GUI thread has to chew
+        // through before it can show anything current.
+        if (delay < -0.2)
+            return false;
+
+        if (delay <= 0.001)
+            return true;
+
+        if (paused) {
+            QMutexLocker waitLock(&mutex_);
+            wake_.wait(&mutex_, 60);
+            continue;
+        }
+
+        // Sleep in slices so a seek or a stop is noticed promptly instead of
+        // after a full frame interval on a long delay.
+        const int slice = qBound(1, int(delay * 1000.0), 30);
+        QMutexLocker waitLock(&mutex_);
+        wake_.wait(&mutex_, slice);
+    }
+}
+
 void MediaDecoder::emitVideoFrame(AVFrame *frame)
 {
+    double presentation = 0.0;
+    if (frame->best_effort_timestamp != AV_NOPTS_VALUE)
+        presentation = frame->best_effort_timestamp * timeBase_;
+    else if (frame->pts != AV_NOPTS_VALUE)
+        presentation = frame->pts * timeBase_;
+
+    // Paced before any scaling work: a frame that will be dropped must not
+    // cost a colour conversion first.
+    if (!waitUntilDue(presentation)) {
+        ++dropped_;
+
+        // Sustained lateness means the CPU is losing. Shedding the loop
+        // filter buys roughly a quarter of the decode back, which is enough
+        // to recover on most of the machines this targets.
+        if (++lateFrames_ > 30 && !lowLatency_)
+            setLowLatencyMode(true);
+        return;
+    }
+    if (lateFrames_ > 0)
+        --lateFrames_;
+
+    // The GPU path: hand over the planes as they came out of the decoder.
+    // No colour conversion, no scaling, no copy into a QImage.
+    if (presenter_ && presenter_->isReady() && presenter_->usingOverlayFormat()
+        && frame->format == AV_PIX_FMT_YUV420P) {
+        QMutexLocker clockOnly(&mutex_);
+        clock_ = presentation;
+        clockOnly.unlock();
+
+        if (presenter_->present(frame->data[0], frame->linesize[0],
+                                frame->data[1], frame->linesize[1],
+                                frame->data[2], frame->linesize[2],
+                                frame->width, frame->height)) {
+            return;
+        }
+        // A failed blit falls through to the software path rather than
+        // dropping the frame: a lost device should not look like a stall.
+    }
+
+    // At most two frames outstanding towards the GUI thread. Past that the
+    // queued connection is a backlog and the interface stops answering.
+    if (framesInFlight_.load() >= 2) {
+        ++dropped_;
+        return;
+    }
+
     QMutexLocker locker(&mutex_);
     QSize target = targetSize_;
     locker.unlock();
@@ -411,20 +520,25 @@ void MediaDecoder::emitVideoFrame(AVFrame *frame)
     // BGRA in memory is Format_RGB32 in Qt on a little-endian machine, so
     // this wraps without a per-pixel pass. The copy is what makes it safe to
     // hand across the thread boundary.
-    QImage image(scaled_->data[0], scaledWidth_, scaledHeight_,
-                 scaled_->linesize[0], QImage::Format_RGB32);
+    // Copied once into a rotating buffer instead of allocating per frame.
+    // Three slots against a cap of two in flight means the slot being
+    // overwritten is never the one the GUI is still painting.
+    QImage &slot = frameRing_[ringIndex_];
+    ringIndex_ = (ringIndex_ + 1) % 3;
+    if (slot.width() != scaledWidth_ || slot.height() != scaledHeight_)
+        slot = QImage(scaledWidth_, scaledHeight_, QImage::Format_RGB32);
 
-    double presentation = 0.0;
-    if (frame->best_effort_timestamp != AV_NOPTS_VALUE)
-        presentation = frame->best_effort_timestamp * timeBase_;
-    else if (frame->pts != AV_NOPTS_VALUE)
-        presentation = frame->pts * timeBase_;
+    const int rowBytes = scaledWidth_ * 4;
+    for (int y = 0; y < scaledHeight_; ++y) {
+        memcpy(slot.scanLine(y), scaled_->data[0] + y * scaled_->linesize[0], rowBytes);
+    }
 
     QMutexLocker clockLocker(&mutex_);
     clock_ = presentation;
     clockLocker.unlock();
 
-    emit frameReady(image.copy(), presentation);
+    framesInFlight_.ref();
+    emit frameReady(slot, presentation);
 }
 
 void MediaDecoder::queueAudio(AVFrame *frame)
@@ -476,7 +590,8 @@ void MediaDecoder::run()
         // Back off when the sink is well ahead or playback is paused, rather
         // than spinning: on a single-core machine a busy decoder thread
         // starves the interface.
-        const bool waitForRoom = (kind_ == AudioStream && audioQueue_.size() > kAudioQueueLimit);
+        const bool waitForRoom = (kind_ == AudioStream && audioQueue_.size() > kAudioQueueLimit)
+            || (kind_ == VideoStream && framesInFlight_.load() >= 2);
         if (paused_ || waitForRoom || reachedEnd) {
             wake_.wait(&mutex_, 50);
             locker.unlock();
@@ -553,5 +668,29 @@ void MediaDecoder::run()
 
             av_frame_unref(frame_);
         }
+    }
+}
+
+
+void MediaDecoder::setLowLatencyMode(bool enabled)
+{
+    if (lowLatency_ == enabled)
+        return;
+    lowLatency_ = enabled;
+
+    if (!codec_)
+        return;
+
+    if (enabled) {
+        // NONREF rather than ALL: skipping every deblock is visible as
+        // blocking on flat areas, while skipping it on non-reference frames
+        // costs much less and still saves most of the time.
+        codec_->skip_loop_filter = AVDISCARD_NONREF;
+        codec_->skip_frame = AVDISCARD_DEFAULT;
+        codec_->flags2 |= AV_CODEC_FLAG2_FAST;
+    } else {
+        codec_->skip_loop_filter = AVDISCARD_DEFAULT;
+        codec_->skip_frame = AVDISCARD_DEFAULT;
+        codec_->flags2 &= ~AV_CODEC_FLAG2_FAST;
     }
 }

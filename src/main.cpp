@@ -4,6 +4,7 @@
 #include <QTextCodec>
 
 #include "main_window.h"
+#include "media_types.h"
 #include "sightline_style.h"
 
 int main(int argc, char *argv[])
@@ -22,6 +23,19 @@ int main(int argc, char *argv[])
     QFont interfaceFont(QString::fromLatin1("Tahoma"));
     interfaceFont.setPixelSize(11);
     application.setFont(interfaceFont);
+
+    // Queued connections carry these across threads, and Qt refuses to
+    // marshal a type it has not been told about — silently, at runtime.
+    qRegisterMetaType<VideoItem>("VideoItem");
+    qRegisterMetaType<ChannelItem>("ChannelItem");
+    qRegisterMetaType<PlaylistItem>("PlaylistItem");
+    qRegisterMetaType<VideoComment>("VideoComment");
+    qRegisterMetaType<SponsorSegment>("SponsorSegment");
+    qRegisterMetaType<QList<VideoItem> >("QList<VideoItem>");
+    qRegisterMetaType<QList<ChannelItem> >("QList<ChannelItem>");
+    qRegisterMetaType<QList<PlaylistItem> >("QList<PlaylistItem>");
+    qRegisterMetaType<QList<VideoComment> >("QList<VideoComment>");
+    qRegisterMetaType<QList<SponsorSegment> >("QList<SponsorSegment>");
 
     application.setStyleSheet(SightlineStyle::sheet());
 

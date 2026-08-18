@@ -84,6 +84,12 @@ struct AccountState
     qint64 accessTokenExpiry;   // seconds since epoch, UTC
     QString lastImportSummary;
 
+    // Registered by whoever builds this. Google will not issue a client that
+    // can ship inside a binary, and a secret in a public repo is revoked
+    // within days, so it lives in config/account.json instead.
+    QString clientId;
+    QString clientSecret;
+
     bool accessTokenValid() const;
 };
 

@@ -47,7 +47,8 @@ public:
         ChannelFeed,
         PlaylistItems,
         Comments,
-        Related
+        Related,
+        ChannelInfo
     };
 
     YtDlpJob(Kind kind, const QString &target, QObject *parent = 0);
@@ -104,6 +105,7 @@ public:
     QString playlistItems(const QString &playlistId, int limit = 100);
     QString comments(const QString &videoId, int limit = 40);
     QString related(const QString &videoId, int limit = 12);
+    QString channelInfo(const QString &channelId);
 
     void cancel(const QString &token);
     void cancelAll();
@@ -114,6 +116,7 @@ signals:
     void probed();
     void videoReady(const QString &token, const VideoItem &video);
     void listReady(const QString &token, const QList<VideoItem> &videos);
+    void channelReady(const QString &token, const ChannelItem &channel);
     void commentsReady(const QString &token, const QList<VideoComment> &comments);
     void failed(const QString &token, const QString &message);
     void busyChanged(int active, int queued);

@@ -38,13 +38,13 @@ win32-msvc* {
         -lavcodec -lavformat -lavutil -lswscale -lswresample
     # DirectSound is the only push-model audio API on XP: no WASAPI, and
     # waveOut gives no play cursor for the A/V clock to read.
-    LIBS += -ldsound -lole32 -luser32
+    LIBS += -ldsound -ld3d9 -lole32 -luser32 -lgdi32
 }
 
 win32-g++ {
     LIBS += -L$$FFMPEG_DIR/lib \
         -lavcodec -lavformat -lavutil -lswscale -lswresample \
-        -ldsound -lole32 -luser32
+        -ldsound -ld3d9 -lole32 -luser32 -lgdi32
 }
 
 unix {
@@ -68,6 +68,9 @@ SOURCES += \
     src/ytdlp_setup.cpp \
     src/net_transport.cpp \
     src/thumbnail_fetcher.cpp \
+    src/sync_clock.cpp \
+    src/oauth_device.cpp \
+    src/d3d9_presenter.cpp \
     src/media_source.cpp \
     src/media_decoder.cpp \
     src/audio_sink.cpp \
@@ -94,6 +97,9 @@ HEADERS += \
     src/ytdlp_setup.h \
     src/net_transport.h \
     src/thumbnail_fetcher.h \
+    src/sync_clock.h \
+    src/oauth_device.h \
+    src/d3d9_presenter.h \
     src/media_source.h \
     src/media_decoder.h \
     src/audio_sink.h \

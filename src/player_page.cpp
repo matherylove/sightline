@@ -9,6 +9,7 @@
 #include <QPainter>
 #include <QPushButton>
 #include <QScrollArea>
+#include <QSlider>
 #include <QStackedWidget>
 #include <QVBoxLayout>
 
@@ -283,7 +284,8 @@ PlayerPage::PlayerPage(Library *library, PlaybackController *playback, QWidget *
       library_(library),
       playback_(playback),
       surface_(0), seek_(0), timeLabel_(0), playButton_(0), rateButton_(0),
-      channelName_(0), channelMeta_(0), subscribeButton_(0), likeButton_(0),
+      avatar_(0), channelName_(0), channelMeta_(0), subscribeButton_(0), likeButton_(0),
+      volumeSlider_(0),
       paneTabs_(0), panes_(0),
       nextLayout_(0), commentsLayout_(0), formatsLayout_(0),
       commentsHead_(0), expiryLabel_(0), autoplayButton_(0),
@@ -335,15 +337,37 @@ QWidget *PlayerPage::buildTransport()
     layout->addWidget(seek_);
 
     QHBoxLayout *row = new QHBoxLayout;
-    row->setSpacing(6);
+    row->setSpacing(4);
+
+    // Every transport control is the same 26x22. A single oversized play
+    // button with nothing beside it reads as a placeholder, and skipping is
+    // the thing people reach for most after pause.
+    QPushButton *previous = transportButton(QString::fromUtf8("\xE2\x8F\xAE"), transport);
+    previous->setToolTip(QString::fromUtf8("Anterior"));
+    connect(previous, SIGNAL(clicked()), this, SIGNAL(previousRequested()));
+    row->addWidget(previous);
+
+    QPushButton *back = transportButton(QString::fromUtf8("-10"), transport);
+    back->setToolTip(QString::fromUtf8("Retroceder 10 s  (\xE2\x86\x90)"));
+    connect(back, SIGNAL(clicked()), this, SLOT(onStepBack()));
+    row->addWidget(back);
 
     playButton_ = transportButton(QString::fromUtf8("\xE2\x9D\x9A\xE2\x9D\x9A"), transport, true);
+    playButton_->setToolTip(QString::fromUtf8("Reproducir / pausar  (Espacio)"));
     connect(playButton_, SIGNAL(clicked()), playback_, SLOT(togglePause()));
     row->addWidget(playButton_);
 
-    QPushButton *forward = transportButton(QString::fromUtf8("\xE2\x96\xB8\xE2\x96\xB8"), transport);
-    forward->setToolTip(QString::fromUtf8("Avanzar 10 s"));
+    QPushButton *forward = transportButton(QString::fromUtf8("+10"), transport);
+    forward->setToolTip(QString::fromUtf8("Avanzar 10 s  (\xE2\x86\x92)"));
+    connect(forward, SIGNAL(clicked()), this, SLOT(onStepForward()));
     row->addWidget(forward);
+
+    QPushButton *next = transportButton(QString::fromUtf8("\xE2\x8F\xAD"), transport);
+    next->setToolTip(QString::fromUtf8("Siguiente"));
+    connect(next, SIGNAL(clicked()), this, SLOT(onNextClicked()));
+    row->addWidget(next);
+
+    row->addSpacing(6);
 
     timeLabel_ = new QLabel(QString::fromLatin1("00:00 / 00:00"), transport);
     timeLabel_->setFont(SightlinePaint::monoFont(10));
@@ -352,18 +376,22 @@ QWidget *PlayerPage::buildTransport()
 
     row->addStretch(1);
 
-    QLabel *volumeLabel = new QLabel(QString::fromUtf8("Vol"), transport);
-    volumeLabel->setFont(SightlinePaint::monoFont(10));
-    volumeLabel->setObjectName(QString::fromLatin1("faintLabel"));
-    row->addWidget(volumeLabel);
+    volumeSlider_ = new QSlider(Qt::Horizontal, transport);
+    volumeSlider_->setRange(0, 100);
+    volumeSlider_->setValue(playback_->volume());
+    volumeSlider_->setFixedWidth(64);
+    volumeSlider_->setFocusPolicy(Qt::NoFocus);
+    volumeSlider_->setStyleSheet(QString::fromLatin1(
+        "QSlider::groove:horizontal { height: 4px; background: #14191B; }"
+        "QSlider::sub-page:horizontal { background: #7B8A8E; }"
+        "QSlider::handle:horizontal { width: 3px; height: 10px; margin: -3px 0; background: #C6D0D2; }"));
+    connect(volumeSlider_, SIGNAL(valueChanged(int)), this, SLOT(onVolumeChanged(int)));
+    row->addWidget(volumeSlider_);
 
     rateButton_ = transportButton(QString::fromLatin1("1x"), transport);
-    rateButton_->setToolTip(QString::fromUtf8("Velocidad de reproducción"));
+    rateButton_->setToolTip(QString::fromUtf8("Velocidad de reproducci\xC3\xB3n"));
+    connect(rateButton_, SIGNAL(clicked()), this, SLOT(onCycleRate()));
     row->addWidget(rateButton_);
-
-    QPushButton *captions = transportButton(QString::fromLatin1("CC"), transport);
-    captions->setToolTip(QString::fromUtf8("Subtítulos"));
-    row->addWidget(captions);
 
     QPushButton *pip = transportButton(QString::fromLatin1("PiP"), transport);
     pip->setToolTip(QString::fromUtf8("Ventana flotante"));
@@ -371,12 +399,48 @@ QWidget *PlayerPage::buildTransport()
     row->addWidget(pip);
 
     QPushButton *fullscreen = transportButton(QString::fromUtf8("\xE2\x9B\xB6"), transport);
-    fullscreen->setToolTip(QString::fromUtf8("Pantalla completa"));
+    fullscreen->setToolTip(QString::fromUtf8("Pantalla completa  (F)"));
     connect(fullscreen, SIGNAL(clicked()), this, SIGNAL(fullscreenRequested()));
     row->addWidget(fullscreen);
 
     layout->addLayout(row);
     return transport;
+}
+
+void PlayerPage::onStepBack()
+{
+    playback_->step(-10.0);
+}
+
+void PlayerPage::onStepForward()
+{
+    playback_->step(10.0);
+}
+
+void PlayerPage::onNextClicked()
+{
+    const QString next = nextVideoId();
+    if (!next.isEmpty())
+        emit playRequested(next);
+}
+
+void PlayerPage::onVolumeChanged(int value)
+{
+    playback_->setVolume(value);
+}
+
+void PlayerPage::onCycleRate()
+{
+    // Four steps, no menu: on this hardware anything above 1.5x is
+    // aspirational anyway, and a submenu for it is one click too many.
+    static const double rates[] = { 1.0, 1.25, 1.5, 0.75 };
+    int index = 0;
+    for (int i = 0; i < 4; ++i) {
+        if (qAbs(playback_->rate() - rates[i]) < 0.01)
+            index = (i + 1) % 4;
+    }
+    playback_->setRate(rates[index]);
+    rateButton_->setText(QString::number(rates[index], 'g', 3) + QString::fromLatin1("x"));
 }
 
 QWidget *PlayerPage::buildChannelRow()
@@ -390,11 +454,12 @@ QWidget *PlayerPage::buildChannelRow()
     layout->setContentsMargins(10, 9, 10, 9);
     layout->setSpacing(8);
 
-    QLabel *avatar = new QLabel(actions);
-    avatar->setFixedSize(24, 24);
-    avatar->setStyleSheet(QString::fromLatin1(
+    avatar_ = new QLabel(actions);
+    avatar_->setFixedSize(28, 28);
+    avatar_->setScaledContents(true);
+    avatar_->setStyleSheet(QString::fromLatin1(
         "background: #22403F; border: 1px solid #333E42;"));
-    layout->addWidget(avatar);
+    layout->addWidget(avatar_);
 
     QWidget *who = new QWidget(actions);
     QVBoxLayout *whoLayout = new QVBoxLayout(who);
@@ -908,4 +973,18 @@ void PlayerPage::onStateChanged(int state)
     playButton_->setText(state == PlaybackController::Playing
         ? QString::fromUtf8("\xE2\x9D\x9A\xE2\x9D\x9A")
         : QString::fromUtf8("\xE2\x96\xB8"));
+}
+
+
+void PlayerPage::setChannelAvatar(const QPixmap &avatar)
+{
+    if (avatar.isNull())
+        return;
+    avatar_->setPixmap(avatar);
+}
+
+void PlayerPage::setPlaying(bool playing)
+{
+    playButton_->setText(playing ? QString::fromUtf8("\xE2\x9D\x9A\xE2\x9D\x9A")
+                                 : QString::fromUtf8("\xE2\x96\xB6"));
 }

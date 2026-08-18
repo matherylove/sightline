@@ -572,7 +572,7 @@ QStringList DownloadDialog::buildArguments(const QString &cacheDir) const
 
 LinkAccountDialog::LinkAccountDialog(QWidget *parent)
     : SightlineDialog(QString::fromUtf8("Vincular cuenta de Google"), parent),
-      codeLabel_(0), statusLabel_(0), remaining_(900)
+      codeLabel_(0), statusLabel_(0), urlLabel_(0), remaining_(900), counting_(false)
 {
     setDialogWidth(660);
     QVBoxLayout *layout = contentLayout();
@@ -614,8 +614,15 @@ LinkAccountDialog::LinkAccountDialog(QWidget *parent)
 
     layout->addWidget(codeBox);
 
+    urlLabel_ = new QLabel(QString::fromLatin1("google.com/device"), this);
+    urlLabel_->setFont(SightlinePaint::monoFont(11));
+    urlLabel_->setObjectName(QString::fromLatin1("tealLabel"));
+    urlLabel_->setAlignment(Qt::AlignCenter);
+    layout->addWidget(urlLabel_);
+    layout->addSpacing(4);
+
     const char *steps[] = {
-        "Abre google.com/device en el m\xC3\xB3vil o en otro ordenador.",
+        "Abre la direcci\xC3\xB3n de arriba en el m\xC3\xB3vil o en otro ordenador.",
         "Escribe el c\xC3\xB3\x64igo de arriba y acepta el acceso de lectura.",
         "Vuelve aqu\xC3\xAD. Esta ventana se cerrar\xC3\xA1 sola."
     };
@@ -677,6 +684,7 @@ LinkAccountDialog::LinkAccountDialog(QWidget *parent)
 void LinkAccountDialog::setUserCode(const QString &code)
 {
     codeLabel_->setText(code);
+    counting_ = !code.isEmpty() && !code.startsWith(QLatin1Char('-'));
 }
 
 void LinkAccountDialog::setExpiry(int secondsRemaining)
@@ -687,7 +695,28 @@ void LinkAccountDialog::setExpiry(int secondsRemaining)
 
 void LinkAccountDialog::setStatus(const QString &text)
 {
+    counting_ = false;
     statusLabel_->setText(text);
+}
+
+void LinkAccountDialog::onCodeReady(const QString &userCode, const QString &verificationUrl,
+                                    int expiresIn)
+{
+    setUserCode(userCode);
+    setVerificationUrl(verificationUrl);
+    remaining_ = expiresIn > 0 ? expiresIn : 900;
+    counting_ = true;
+}
+
+void LinkAccountDialog::setVerificationUrl(const QString &url)
+{
+    if (!url.isEmpty())
+        urlLabel_->setText(url);
+}
+
+void LinkAccountDialog::stopCountdown()
+{
+    counting_ = false;
 }
 
 void LinkAccountDialog::onCopyCode()
@@ -697,14 +726,14 @@ void LinkAccountDialog::onCopyCode()
 
 void LinkAccountDialog::onTick()
 {
+    // Only counts once a real code is on screen; the polling itself is done
+    // by OAuthDevice on Google's own interval, not by this timer.
+    if (!counting_)
+        return;
     if (remaining_ > 0)
         --remaining_;
-    // A real countdown rather than an indeterminate spinner: the user can
-    // see how long they actually have.
     statusLabel_->setText(QString::fromUtf8("Esperando confirmación… el código caduca en %1")
         .arg(SightlinePaint::clockLabel(remaining_)));
-    if (remaining_ % 5 == 0)
-        emit pollRequested();
 }
 
 // ======================================================== SponsorBlockDialog

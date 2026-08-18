@@ -5,6 +5,7 @@
 #include <QMutex>
 #include <QQueue>
 #include <QString>
+#include <QAtomicInt>
 #include <QThread>
 #include <QWaitCondition>
 
@@ -17,6 +18,8 @@ struct SwsContext;
 struct SwrContext;
 
 class MediaSource;
+class SyncClock;
+class D3D9Presenter;
 
 // Demuxes and decodes one adaptive stream on its own thread.
 //
@@ -56,6 +59,25 @@ public:
     // rescale in the paint event. Zero keeps the native size.
     void setTargetSize(const QSize &size);
 
+    // The clock this decoder obeys. Video waits on it before showing a
+    // frame; audio advances it as samples reach the sound card.
+    void setSyncClock(SyncClock *clock) { sync_ = clock; }
+
+    // When set and usable, frames go straight to the GPU as YUV and neither
+    // swscale nor a QImage is involved at all.
+    void setPresenter(D3D9Presenter *presenter) { presenter_ = presenter; }
+
+    // Drops the deblocking filter when the machine cannot keep up. It is the
+    // single biggest saving available in an H.264 decoder and costs some
+    // sharpness, which is a better trade than dropping every third frame.
+    void setLowLatencyMode(bool enabled);
+    bool lowLatencyMode() const { return lowLatency_; }
+
+    // Called by the GUI thread once a frame has actually been painted, so
+    // the decoder knows the pipe is clear. Without this the queued signal
+    // backs up and the interface stops responding.
+    void acknowledgeFrame();
+
     double duration() const { return duration_; }
     int width() const { return width_; }
     int height() const { return height_; }
@@ -89,6 +111,7 @@ private:
     bool openCodec(AVFormatContext *format, int streamIndex);
     void closeAll();
     void emitVideoFrame(AVFrame *frame);
+    bool waitUntilDue(double presentationTime);
     void queueAudio(AVFrame *frame);
     void performSeek();
 
@@ -97,6 +120,11 @@ private:
 
     Kind kind_;
     MediaSource *source_;
+    SyncClock *sync_;
+    D3D9Presenter *presenter_;
+    bool lowLatency_;
+    int lateFrames_;
+    QAtomicInt framesInFlight_;
     Transport transport_;
 
     AVFormatContext *format_;
@@ -122,6 +150,12 @@ private:
     int sampleRate_;
     int channels_;
     int dropped_;
+
+    // Three rotating buffers rather than a fresh QImage per frame: at 1080p
+    // a copy is eight megabytes, and at thirty frames a second that alone is
+    // more memory bandwidth than these machines have to spare.
+    QImage frameRing_[3];
+    int ringIndex_;
 
     mutable QMutex mutex_;
     QWaitCondition wake_;

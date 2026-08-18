@@ -87,7 +87,14 @@ private slots:
     void onSurfaceResized(const QSize &size);
     void onUrlExpired();
     void onPlaybackFailed(const QString &message);
+    void onChannelReady(const QString &token, const ChannelItem &channel);
+    void onArtworkReady(const QString &key);
+    void onPreviousRequested();
     void onLinkAccount();
+    void onAuthorised(const QString &accessToken, const QString &refreshToken, int expiresIn);
+    void onChannelsImported(const QList<ChannelItem> &channels);
+    void onPlaylistsImported(const QList<PlaylistItem> &playlists);
+    void onImportFinished(const QString &summary);
     void onImportCsv();
     void onOpenSponsorBlockSettings();
     void onOpenToolsSettings();
@@ -105,6 +112,7 @@ private:
     void showView(View view, const QString &argument = QString());
     void refreshStatusBar();
     void playVideo(const QString &videoId, bool music);
+    void requestChannelAvatar(const QString &channelId);
     void updateWindowTitle(const QString &suffix);
     void saveEverything();
 

@@ -13,6 +13,7 @@
 #include <QPushButton>
 #include <QScrollArea>
 #include <QStackedWidget>
+#include <QDateTime>
 #include <QTimer>
 #include <QVBoxLayout>
 
@@ -32,6 +33,7 @@
 #include "sponsorblock.h"
 #include "stats_page.h"
 #include "net_transport.h"
+#include "oauth_device.h"
 #include "widgets.h"
 #include "ytdlp_setup.h"
 #include "ytdlp.h"
@@ -77,6 +79,9 @@ bool MainWindow::initialise(QString *error)
             this, SLOT(onVideoReady(QString, VideoItem)));
     connect(extractor_, SIGNAL(listReady(QString, QList<VideoItem>)),
             this, SLOT(onListReady(QString, QList<VideoItem>)));
+    connect(extractor_, SIGNAL(channelReady(QString, ChannelItem)),
+            this, SLOT(onChannelReady(QString, ChannelItem)));
+    connect(library_, SIGNAL(thumbnailReady(QString)), this, SLOT(onArtworkReady(QString)));
     connect(extractor_, SIGNAL(commentsReady(QString, QList<VideoComment>)),
             this, SLOT(onCommentsReady(QString, QList<VideoComment>)));
     connect(extractor_, SIGNAL(failed(QString, QString)),
@@ -142,6 +147,8 @@ void MainWindow::onOfferYtDlpDownload()
 
 void MainWindow::onSurfaceResized(const QSize &size)
 {
+    playback_->attachSurface(player_->surface()->surfaceHandle(), size);
+
     // The scaler produces frames at exactly the surface size so the paint
     // event is a straight blit; rescaling twice is the sort of waste these
     // machines cannot absorb.
@@ -153,6 +160,10 @@ void MainWindow::onFrameReady(const QImage &frame)
     player_->surface()->presentFrame(frame);
     if (pip_ && pip_->isVisible())
         pip_->surface()->presentFrame(frame);
+
+    // Tells the decoder the pipe is clear. Without it the pacing cap sees
+    // two frames permanently outstanding and playback stalls after two.
+    playback_->acknowledgeFrame();
 }
 
 void MainWindow::onPlaybackFailed(const QString &message)
@@ -326,6 +337,7 @@ void MainWindow::buildViews()
     connect(player_->surface(), SIGNAL(resized(QSize)),
             this, SLOT(onSurfaceResized(QSize)));
     connect(player_, SIGNAL(playRequested(QString)), this, SLOT(onVideoActivated(QString)));
+    connect(player_, SIGNAL(previousRequested()), this, SLOT(onPreviousRequested()));
     connect(player_, SIGNAL(subscribeToggled(bool)), this, SLOT(onSubscribeToggled(bool)));
     connect(player_, SIGNAL(downloadRequested()), this, SLOT(onDownloadRequested()));
     connect(player_, SIGNAL(commentsRequested()), this, SLOT(onCommentsRequested()));
@@ -622,6 +634,24 @@ void MainWindow::playVideo(const QString &videoId, bool music)
     relatedToken_ = extractor_->related(videoId, 10);
 }
 
+void MainWindow::requestChannelAvatar(const QString &channelId)
+{
+    if (channelId.isEmpty())
+        return;
+
+    ChannelItem known = library_->channel(channelId);
+    if (known.id.isEmpty())
+        known.id = channelId;
+
+    const QPixmap cached = library_->channelAvatar(known);
+    if (!cached.isNull()) {
+        player_->setChannelAvatar(cached);
+        return;
+    }
+    if (known.avatarUrl.isEmpty())
+        extractor_->channelInfo(channelId);
+}
+
 void MainWindow::onVideoReady(const QString &token, const VideoItem &video)
 {
     if (!token.isEmpty() && token != extractToken_)
@@ -671,13 +701,21 @@ void MainWindow::onVideoReady(const QString &token, const VideoItem &video)
     } else {
         player_->setVideo(currentVideo_);
         player_->setSubscribed(library_->isSubscribed(currentVideo_.channelId));
+        requestChannelAvatar(currentVideo_.channelId);
         player_->setUrlExpiry(QString::fromUtf8(
             "La URL caduca en unas 5 h.\nSightline vuelve a pedirla sola si recibe un 403."));
     }
 
     const qint64 resume = settings_.rememberPosition
         ? library_->resumePosition(currentVideo_.id) : 0;
+    // The canvas handle has to be known before the decoder opens, or the
+    // presenter has nothing to build its device against.
+    if (!currentIsMusic_)
+        playback_->attachSurface(player_->surface()->surfaceHandle(),
+                                 player_->surface()->size());
+
     playback_->open(currentVideo_, videoFormat, audioFormat, double(resume));
+    player_->surface()->setGpuPresenting(playback_->usingGpuPresentation());
 
     if (settings_.trackListening)
         stats_->beginPlay(currentVideo_, currentIsMusic_);
@@ -756,6 +794,32 @@ void MainWindow::onCommentsReady(const QString &token, const QList<VideoComment>
         return;
     commentsToken_.clear();
     player_->setComments(comments);
+}
+
+void MainWindow::onChannelReady(const QString &token, const ChannelItem &channel)
+{
+    Q_UNUSED(token);
+    if (channel.id.isEmpty())
+        return;
+
+    library_->rememberChannelAvatar(channel.id, channel.avatarUrl);
+    if (channel.id == currentVideo_.channelId)
+        player_->setChannelAvatar(library_->channelAvatar(channel));
+}
+
+void MainWindow::onArtworkReady(const QString &key)
+{
+    // Channel avatars come back through the same fetcher as thumbnails, so
+    // the prefix is what tells them apart.
+    if (!key.startsWith(QLatin1String("ch_")))
+        return;
+    if (key.mid(3) != currentVideo_.channelId)
+        return;
+
+    ChannelItem channel = library_->channel(currentVideo_.channelId);
+    if (channel.id.isEmpty())
+        channel.id = currentVideo_.channelId;
+    player_->setChannelAvatar(library_->channelAvatar(channel));
 }
 
 void MainWindow::onCommentsRequested()
@@ -847,7 +911,7 @@ void MainWindow::onSegmentPending(SponsorSegment::Category category, double star
 
 void MainWindow::onPlaybackStateChanged(PlaybackController::State state)
 {
-    Q_UNUSED(state);
+    player_->setPlaying(state == PlaybackController::Playing);
     refreshStatusBar();
 }
 
@@ -941,6 +1005,19 @@ void MainWindow::onVideoContextRequested(const QString &videoId, const QPoint &g
     }
 }
 
+void MainWindow::onPreviousRequested()
+{
+    // Ten seconds in, "previous" means the start of this video; before that
+    // it means the last thing actually watched.
+    if (playback_->position() > 10.0) {
+        playback_->seek(0.0);
+        return;
+    }
+    const QList<VideoItem> recent = library_->history(2);
+    if (recent.size() > 1)
+        playVideo(recent.at(1).id, currentIsMusic_);
+}
+
 void MainWindow::onPipRequested()
 {
     if (!pip_) {
@@ -1018,7 +1095,8 @@ void MainWindow::refreshStatusBar()
     if (!lastError_.isEmpty()) {
         detail = lastError_;
     } else if (playback_->isPlaying()) {
-        detail = QString::fromUtf8("%1 \xC2\xB7 %2 \xC2\xB7 b\xC3\xBA""fer %3 s")
+        detail = playback_->presenterDescription() + QString::fromUtf8(" \xC2\xB7 ")
+               + QString::fromUtf8("%1 \xC2\xB7 %2 \xC2\xB7 b\xC3\xBA""fer %3 s")
             .arg(playback_->videoCodecLabel())
             .arg(playback_->resolutionLabel())
             .arg(QString::number(qMax(0.0, playback_->buffered() - playback_->position()), 'f', 1));
@@ -1050,14 +1128,74 @@ void MainWindow::onLinkAccount()
     LinkAccountDialog dialog(this);
     connect(&dialog, SIGNAL(importCsvRequested()), this, SLOT(onImportCsv()));
 
-    // The Device Flow needs a Google client id, which each build has to
-    // register for itself; without one the dialog explains the CSV route
-    // rather than showing a code that could never work.
-    dialog.setUserCode(QString::fromLatin1("--------"));
-    dialog.setStatus(QString::fromUtf8(
-        "Configura un ID de cliente OAuth en config/account.json para usar esta vía. "
-        "Mientras tanto, la importación por CSV de Takeout funciona sin registrar nada."));
+    OAuthDevice oauth(this);
+    oauth.setClient(account_.clientId, account_.clientSecret);
+
+    if (!oauth.hasClient()) {
+        dialog.setStatus(QString::fromUtf8(
+            "Falta el ID de cliente OAuth. Registra uno de tipo «TV y dispositivos de "
+            "entrada limitada» en Google Cloud y ponlo en config/account.json como "
+            "clientId y clientSecret. Mientras tanto, la importación por CSV de Takeout "
+            "funciona sin registrar nada."));
+        dialog.exec();
+        return;
+    }
+
+    connect(&oauth, SIGNAL(codeReady(QString, QString, int)),
+            &dialog, SLOT(onCodeReady(QString, QString, int)));
+    connect(&oauth, SIGNAL(statusChanged(QString)), &dialog, SLOT(setStatus(QString)));
+    connect(&oauth, SIGNAL(failed(QString)), &dialog, SLOT(setStatus(QString)));
+
+    connect(&oauth, SIGNAL(channelsImported(QList<ChannelItem>)),
+            this, SLOT(onChannelsImported(QList<ChannelItem>)));
+    connect(&oauth, SIGNAL(playlistsImported(QList<PlaylistItem>)),
+            this, SLOT(onPlaylistsImported(QList<PlaylistItem>)));
+    connect(&oauth, SIGNAL(importFinished(QString)),
+            this, SLOT(onImportFinished(QString)));
+    connect(&oauth, SIGNAL(authorised(QString, QString, int)),
+            this, SLOT(onAuthorised(QString, QString, int)));
+    connect(&oauth, SIGNAL(importFinished(QString)), &dialog, SLOT(accept()));
+
+    oauth.begin();
     dialog.exec();
+    oauth.cancel();
+}
+
+void MainWindow::onAuthorised(const QString &accessToken, const QString &refreshToken, int expiresIn)
+{
+    account_.linked = true;
+    account_.accessToken = accessToken;
+    if (!refreshToken.isEmpty())
+        account_.refreshToken = refreshToken;
+    account_.accessTokenExpiry =
+        QDateTime::currentDateTimeUtc().toMSecsSinceEpoch() / 1000 + expiresIn;
+    settingsStore_->saveAccount(account_);
+}
+
+void MainWindow::onChannelsImported(const QList<ChannelItem> &channels)
+{
+    for (int i = 0; i < channels.size(); ++i) {
+        library_->subscribe(channels.at(i));
+        if (!channels.at(i).avatarUrl.isEmpty())
+            library_->rememberChannelAvatar(channels.at(i).id, channels.at(i).avatarUrl);
+    }
+    library_->save();
+    rebuildSidebar();
+}
+
+void MainWindow::onPlaylistsImported(const QList<PlaylistItem> &playlists)
+{
+    for (int i = 0; i < playlists.size(); ++i)
+        library_->upsertPlaylist(playlists.at(i));
+    library_->save();
+    rebuildSidebar();
+}
+
+void MainWindow::onImportFinished(const QString &summary)
+{
+    account_.lastImportSummary = summary;
+    settingsStore_->saveAccount(account_);
+    SightlineDialog::showMessage(this, QString::fromUtf8("Importar"), summary);
 }
 
 void MainWindow::onImportCsv()

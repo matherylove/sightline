@@ -742,11 +742,31 @@ void VideoSurface::resizeEvent(QResizeEvent *event)
     emit resized(size());
 }
 
+void VideoSurface::setGpuPresenting(bool presenting)
+{
+    if (gpuPresenting_ == presenting)
+        return;
+    gpuPresenting_ = presenting;
+
+    // Once Direct3D owns the window, Qt must stop drawing into it or the two
+    // fight over every repaint and the picture flickers. The overlays are
+    // still painted, just on top of whatever D3D last presented.
+    setAttribute(Qt::WA_PaintOnScreen, presenting);
+    setAttribute(Qt::WA_NoSystemBackground, presenting);
+    setAttribute(Qt::WA_OpaquePaintEvent, true);
+    update();
+}
+
 void VideoSurface::paintEvent(QPaintEvent *)
 {
     QPainter painter(this);
 
-    if (!frame_.isNull()) {
+    if (gpuPresenting_) {
+        // Direct3D has already put the picture on screen; only the overlays
+        // are drawn here, and only when there is something to show.
+        if (!overlayVisible_ && !toastVisible_)
+            return;
+    } else if (!frame_.isNull()) {
         // Letterboxed, never stretched: the aspect ratio of the decoded
         // frame is authoritative and the bars are part of the picture.
         const QSize scaled = frame_.size().scaled(size(), Qt::KeepAspectRatio);

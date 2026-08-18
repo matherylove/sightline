@@ -126,11 +126,15 @@ public:
 
     void setUserCode(const QString &code);
     void setExpiry(int secondsRemaining);
+    void setVerificationUrl(const QString &url);
+    void stopCountdown();
+
+public slots:
+    void onCodeReady(const QString &userCode, const QString &verificationUrl, int expiresIn);
     void setStatus(const QString &text);
 
 signals:
     void importCsvRequested();
-    void pollRequested();
 
 private slots:
     void onCopyCode();
@@ -139,7 +143,9 @@ private slots:
 private:
     QLabel *codeLabel_;
     QLabel *statusLabel_;
+    QLabel *urlLabel_;
     int remaining_;
+    bool counting_;
 };
 
 // SponsorBlock settings: three actions per category and nothing else.

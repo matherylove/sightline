@@ -257,6 +257,7 @@ public:
 
     void setOverlayLines(const QStringList &lines);
     void setOverlayVisible(bool visible);
+    void setGpuPresenting(bool presenting);
     bool overlayVisible() const { return overlayVisible_; }
 
     void setSkipToast(const QString &category, const QString &detail, const QColor &colour);
@@ -287,6 +288,7 @@ private:
     QImage frame_;
     QStringList overlayLines_;
     bool overlayVisible_;
+    bool gpuPresenting_;
     bool toastVisible_;
     QString toastCategory_;
     QString toastDetail_;

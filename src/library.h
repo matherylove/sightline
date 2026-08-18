@@ -69,6 +69,11 @@ public:
     QPixmap thumbnail(const VideoItem &video);
     QPixmap thumbnailIfPresent(const QString &videoId) const;
 
+    // Channel avatars share the fetcher and the cache directory; the id is
+    // prefixed so it cannot collide with a video of the same name.
+    QPixmap channelAvatar(const ChannelItem &channel);
+    void rememberChannelAvatar(const QString &channelId, const QString &url);
+
     int importSubscriptionsCsv(const QString &path, QString *error = 0);
 
 signals:

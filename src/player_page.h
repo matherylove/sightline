@@ -11,6 +11,7 @@ class QButtonGroup;
 class QLabel;
 class QPushButton;
 class QScrollArea;
+class QSlider;
 class QStackedWidget;
 class QVBoxLayout;
 
@@ -85,6 +86,8 @@ public:
     void setCommentsLoading(bool loading);
     void setSegments(const QList<SponsorSegment> &segments);
     void setSubscribed(bool subscribed);
+    void setChannelAvatar(const QPixmap &avatar);
+    void setPlaying(bool playing);
     void setUrlExpiry(const QString &text);
 
     VideoSurface *surface() const { return surface_; }
@@ -95,6 +98,7 @@ public:
 
 signals:
     void playRequested(const QString &videoId);
+    void previousRequested();
     void subscribeToggled(bool subscribed);
     void downloadRequested();
     void pipRequested();
@@ -106,6 +110,11 @@ signals:
 
 private slots:
     void onPaneChanged(int pane);
+    void onStepBack();
+    void onStepForward();
+    void onNextClicked();
+    void onVolumeChanged(int value);
+    void onCycleRate();
     void onPositionChanged(double seconds);
     void onDurationChanged(double seconds);
     void onBufferedChanged(double seconds);
@@ -130,7 +139,9 @@ private:
     QLabel *timeLabel_;
     QPushButton *playButton_;
     QPushButton *rateButton_;
+    QSlider *volumeSlider_;
 
+    QLabel *avatar_;
     QLabel *channelName_;
     QLabel *channelMeta_;
     QPushButton *subscribeButton_;
