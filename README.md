@@ -163,6 +163,30 @@ fotograma y por slice: en un Pentium 4 eso es un núcleo y no cuesta nada, pero 
 posteriores sobre los que suele correr XP Integral Edition es la diferencia entre 720p fluido y
 720p a tirones.
 
+## Aceleración por hardware: qué hay y qué no
+
+**No hay decodificación por hardware en XP, y no es rodeable.** DXVA2 necesita WDDM, o sea
+Vista. DXVA 1.0 sí existe en XP pero solo se expone por DirectShow, y FFmpeg nunca lo ha
+implementado. NVDEC exige una API de driver muy por encima del 369.09, el último que NVIDIA
+publicó para XP. QuickSync pide drivers de Win7+. La decodificación se queda en la CPU.
+
+Lo que sí se puede mover a la GPU es la otra mitad del coste por fotograma, y eso es lo que
+hace `D3D9Presenter`. Hay tres rutas y la barra de estado dice cuál está activa:
+
+| Ruta | Qué hace la GPU |
+|---|---|
+| `D3D9 YV12` | Conversión de color **y** escalado. `sws_scale` desaparece del presupuesto. |
+| `D3D9 BGRA` | Solo el escalado; swscale escribe directo en memoria de vídeo, sin copia intermedia. |
+| Software | Todo en CPU. Solo si el driver rechaza ambas superficies. |
+
+La primera es lo que hacía VMR-9 y lo que cualquier GPU de la era XP tiene en silicio. La
+segunda existe porque algunos integrados viejos (SiS, VIA) rechazan superficies YUV, y ahí
+el escalado sigue siendo gratis aunque la conversión no lo sea.
+
+Además, si el decodificador acumula más de 30 fotogramas tarde, activa
+`skip_loop_filter = AVDISCARD_NONREF`: recupera cerca de un cuarto del tiempo de decodificación
+a cambio de algo de nitidez, que es mejor trato que descartar uno de cada tres fotogramas.
+
 ## Estado
 
 Interfaz, biblioteca, extracción, SponsorBlock, estadísticas, diálogos, decodificación y audio

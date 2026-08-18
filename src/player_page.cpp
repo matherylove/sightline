@@ -929,7 +929,13 @@ void PlayerPage::onFormatRowClicked()
 void PlayerPage::refreshOverlay()
 {
     QStringList lines;
-    lines << QString::fromUtf8(">Superficie D3D9 \xC2\xB7 YV12 \xE2\x86\x92 shader PS 2.0");
+
+    // Says what the pipeline is doing rather than what it was designed to do.
+    // If the driver refused a YUV surface the user should be able to see that
+    // here instead of wondering why their machine is slower than expected.
+    const QString presenter = playback_->presenterDescription();
+    lines << QString::fromLatin1(">") + (presenter.isEmpty()
+        ? QString::fromUtf8("Presentaci\xC3\xB3n por software") : presenter);
 
     if (!playback_->videoCodecLabel().isEmpty()) {
         QString line = playback_->videoCodecLabel();
@@ -937,7 +943,13 @@ void PlayerPage::refreshOverlay()
             line += QString::fromUtf8(" \xC2\xB7 ") + playback_->resolutionLabel();
         lines << line;
     }
-    lines << QString::fromUtf8("Decodificaci\xC3\xB3n software (XP no expone DXVA2)");
+
+    // The honest line: there is no hardware decoding on XP. DXVA2 needs
+    // WDDM, DXVA1 is DirectShow-only and FFmpeg never implemented it.
+    QString decodeLine = QString::fromUtf8("Decodificaci\xC3\xB3n software \xC2\xB7 XP no expone DXVA2");
+    if (!decoderInfo_.isEmpty())
+        decodeLine += QString::fromUtf8(" \xC2\xB7 ") + decoderInfo_;
+    lines << decodeLine;
     lines << QString::fromUtf8("B\xC3\xBA""fer %1 s \xC2\xB7 reloj maestro: audio")
                  .arg(QString::number(qMax(0.0, playback_->buffered() - playback_->position()), 'f', 1));
     surface_->setOverlayLines(lines);
@@ -987,4 +999,11 @@ void PlayerPage::setPlaying(bool playing)
 {
     playButton_->setText(playing ? QString::fromUtf8("\xE2\x9D\x9A\xE2\x9D\x9A")
                                  : QString::fromUtf8("\xE2\x96\xB6"));
+}
+
+
+void PlayerPage::setDecoderInfo(const QString &info)
+{
+    decoderInfo_ = info;
+    refreshOverlay();
 }

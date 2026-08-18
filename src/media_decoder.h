@@ -85,6 +85,9 @@ public:
     QString codecName() const { return codecName_; }
     int droppedFrames() const { return dropped_; }
 
+    // The SIMD level FFmpeg's runtime dispatch chose on this CPU.
+    static QString cpuFeatures();
+
     // Audio only: interleaved signed 16-bit, the format every Windows sink
     // from waveOut upwards accepts without negotiation.
     int sampleRate() const { return sampleRate_; }

@@ -32,6 +32,7 @@
 #include "sightline_window.h"
 #include "sponsorblock.h"
 #include "stats_page.h"
+#include "media_decoder.h"
 #include "net_transport.h"
 #include "oauth_device.h"
 #include "widgets.h"
@@ -157,9 +158,13 @@ void MainWindow::onSurfaceResized(const QSize &size)
 
 void MainWindow::onFrameReady(const QImage &frame)
 {
-    player_->surface()->presentFrame(frame);
+    // With the GPU path active the picture never reaches this signal, so
+    // whatever arrives here is the software fallback and belongs on whichever
+    // surface is currently showing.
     if (pip_ && pip_->isVisible())
         pip_->surface()->presentFrame(frame);
+    else
+        player_->surface()->presentFrame(frame);
 
     // Tells the decoder the pipe is clear. Without it the pacing cap sees
     // two frames permanently outstanding and playback stalls after two.
@@ -336,6 +341,7 @@ void MainWindow::buildViews()
     player_ = new PlayerPage(library_, playback_, stack_);
     connect(player_->surface(), SIGNAL(resized(QSize)),
             this, SLOT(onSurfaceResized(QSize)));
+    player_->setDecoderInfo(MediaDecoder::cpuFeatures());
     connect(player_, SIGNAL(playRequested(QString)), this, SLOT(onVideoActivated(QString)));
     connect(player_, SIGNAL(previousRequested()), this, SLOT(onPreviousRequested()));
     connect(player_, SIGNAL(subscribeToggled(bool)), this, SLOT(onSubscribeToggled(bool)));
@@ -1028,12 +1034,25 @@ void MainWindow::onPipRequested()
     pip_->setSegments(playback_->segments());
     pip_->show();
     pip_->raise();
+
+    // Direct3D is bound to one window, so the presenter follows the picture
+    // rather than leaving the floating window blank. The main canvas goes
+    // back to software painting while the PiP is up.
+    player_->surface()->setGpuPresenting(false);
+    playback_->attachSurface(pip_->surface()->surfaceHandle(), pip_->surface()->size());
+    pip_->surface()->setGpuPresenting(playback_->usingGpuPresentation());
 }
 
 void MainWindow::onPipClosed()
 {
-    if (pip_)
+    if (pip_) {
+        pip_->surface()->setGpuPresenting(false);
         pip_->hide();
+    }
+
+    playback_->attachSurface(player_->surface()->surfaceHandle(),
+                             player_->surface()->size());
+    player_->surface()->setGpuPresenting(playback_->usingGpuPresentation());
     showView(PlayerView);
 }
 

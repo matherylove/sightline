@@ -39,16 +39,29 @@ public:
     bool isReady() const { return ready_; }
 
     // Called from the decoder thread. Planar YUV 4:2:0 in, one blit out.
+    // Only usable when the driver accepted a YV12 surface.
     bool present(const unsigned char *y, int yStride,
                  const unsigned char *u, int uStride,
                  const unsigned char *v, int vStride,
                  int width, int height);
+
+    // The second-best path: the caller has already converted to BGRA, and
+    // the GPU still does the scaling and the blit. Worth having because a
+    // software resize of 1080p down to the window is itself expensive, and
+    // this removes it even on drivers that refuse YUV surfaces.
+    bool presentBgra(const unsigned char *pixels, int stride, int width, int height);
+
+    // Locks the surface so the caller can scale straight into video memory
+    // rather than into a staging buffer that then has to be copied again.
+    unsigned char *beginBgraFrame(int *stride, int width, int height);
+    bool endBgraFrame();
 
     // The window changed size; the swap chain has to follow it.
     void resize(const QSize &clientSize);
 
     QString adapterName() const { return adapterName_; }
     bool usingOverlayFormat() const { return usingYv12_; }
+    bool usingGpuScaling() const { return ready_; }
     QString describe() const;
 
 private:
@@ -56,6 +69,7 @@ private:
     bool createSurface(const QSize &videoSize, QString *error);
     void releaseSurface();
     bool handleLostDevice();
+    bool blitToScreen(int width, int height);
 
     void *d3d_;              // IDirect3D9 *
     void *device_;           // IDirect3DDevice9 *

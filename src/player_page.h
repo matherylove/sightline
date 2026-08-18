@@ -88,6 +88,7 @@ public:
     void setSubscribed(bool subscribed);
     void setChannelAvatar(const QPixmap &avatar);
     void setPlaying(bool playing);
+    void setDecoderInfo(const QString &info);
     void setUrlExpiry(const QString &text);
 
     VideoSurface *surface() const { return surface_; }
@@ -160,6 +161,7 @@ private:
     VideoItem video_;
     QList<VideoItem> recommendations_;
     QString currentItag_;
+    QString decoderInfo_;
     bool commentsLoaded_;
 };
 

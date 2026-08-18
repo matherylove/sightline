@@ -232,7 +232,7 @@ bool D3D9Presenter::present(const unsigned char *y, int yStride,
     }
 
     if (!usingYv12_)
-        return false;   // caller keeps the software path
+        return false;   // the caller uses presentBgra instead
 
     D3DLOCKED_RECT locked;
     if (FAILED(surface->LockRect(&locked, 0, D3DLOCK_NOSYSLOCK)))
@@ -258,6 +258,15 @@ bool D3D9Presenter::present(const unsigned char *y, int yStride,
     }
 
     surface->UnlockRect();
+
+    return blitToScreen(width, height);
+}
+
+// The shared tail of both present paths: letterbox, clear, stretch, show.
+bool D3D9Presenter::blitToScreen(int width, int height)
+{
+    IDirect3DDevice9 *device = static_cast<IDirect3DDevice9 *>(device_);
+    IDirect3DSurface9 *surface = static_cast<IDirect3DSurface9 *>(surface_);
 
     IDirect3DSurface9 *backBuffer = 0;
     if (FAILED(device->GetBackBuffer(0, 0, D3DBACKBUFFER_TYPE_MONO, &backBuffer)))
@@ -300,13 +309,75 @@ bool D3D9Presenter::present(const unsigned char *y, int yStride,
     return SUCCEEDED(shown);
 }
 
+unsigned char *D3D9Presenter::beginBgraFrame(int *stride, int width, int height)
+{
+    mutex_.lock();
+    if (!ready_ || !device_ || !surface_ || usingYv12_) {
+        mutex_.unlock();
+        return 0;
+    }
+
+    IDirect3DDevice9 *device = static_cast<IDirect3DDevice9 *>(device_);
+    if (deviceLost_ || FAILED(device->TestCooperativeLevel())) {
+        if (!handleLostDevice()) {
+            mutex_.unlock();
+            return 0;
+        }
+    }
+
+    if (width != videoSize_.width() || height != videoSize_.height()) {
+        releaseSurface();
+        if (!createSurface(QSize(width, height), 0)) {
+            mutex_.unlock();
+            return 0;
+        }
+    }
+
+    IDirect3DSurface9 *surface = static_cast<IDirect3DSurface9 *>(surface_);
+    D3DLOCKED_RECT locked;
+    if (FAILED(surface->LockRect(&locked, 0, D3DLOCK_NOSYSLOCK))) {
+        mutex_.unlock();
+        return 0;
+    }
+
+    *stride = locked.Pitch;
+    return static_cast<unsigned char *>(locked.pBits);
+}
+
+bool D3D9Presenter::endBgraFrame()
+{
+    IDirect3DSurface9 *surface = static_cast<IDirect3DSurface9 *>(surface_);
+    if (!surface) {
+        mutex_.unlock();
+        return false;
+    }
+    surface->UnlockRect();
+    const bool shown = blitToScreen(videoSize_.width(), videoSize_.height());
+    mutex_.unlock();
+    return shown;
+}
+
+bool D3D9Presenter::presentBgra(const unsigned char *pixels, int stride, int width, int height)
+{
+    int surfaceStride = 0;
+    unsigned char *destination = beginBgraFrame(&surfaceStride, width, height);
+    if (!destination)
+        return false;
+
+    const int rowBytes = width * 4;
+    for (int row = 0; row < height; ++row)
+        memcpy(destination + row * surfaceStride, pixels + row * stride, rowBytes);
+
+    return endBgraFrame();
+}
+
 QString D3D9Presenter::describe() const
 {
     if (!ready_)
         return QString::fromUtf8("D3D9 no disponible");
     if (usingYv12_)
-        return QString::fromUtf8("D3D9 YV12 \xE2\x86\x92 GPU (%1)").arg(adapterName_);
-    return QString::fromUtf8("D3D9 sin YV12: conversión por CPU (%1)").arg(adapterName_);
+        return QString::fromUtf8("D3D9 YV12: color y escalado en GPU");
+    return QString::fromUtf8("D3D9 BGRA: escalado en GPU, color en CPU");
 }
 
 #else
@@ -324,6 +395,10 @@ void D3D9Presenter::shutdown() { ready_ = false; }
 void D3D9Presenter::resize(const QSize &) {}
 bool D3D9Presenter::present(const unsigned char *, int, const unsigned char *, int,
                             const unsigned char *, int, int, int) { return false; }
+bool D3D9Presenter::presentBgra(const unsigned char *, int, int, int) { return false; }
+unsigned char *D3D9Presenter::beginBgraFrame(int *, int, int) { return 0; }
+bool D3D9Presenter::endBgraFrame() { return false; }
+bool D3D9Presenter::blitToScreen(int, int) { return false; }
 QString D3D9Presenter::describe() const { return QString::fromUtf8("D3D9 no disponible"); }
 
 #endif

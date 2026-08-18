@@ -5,7 +5,7 @@
 #include <QList>
 #include <QObject>
 #include <QSize>
-#include <QWindowDefs>
+#include <QtGui/qwindowdefs.h>
 #include <QString>
 
 #include "app_settings.h"

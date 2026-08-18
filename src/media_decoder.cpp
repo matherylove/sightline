@@ -1,6 +1,7 @@
 #include "media_decoder.h"
 
 #include <QSize>
+#include <QStringList>
 
 #include "media_source.h"
 #include "d3d9_presenter.h"
@@ -17,6 +18,7 @@ extern "C" {
 #include <libavutil/error.h>
 #include <libavutil/imgutils.h>
 #include <libavutil/mem.h>
+#include <libavutil/cpu.h>
 #include <libavutil/opt.h>
 #include <libswresample/swresample.h>
 #include <libswscale/swscale.h>
@@ -31,6 +33,24 @@ const int kIoBufferSize = 32 * 1024;
 // Roughly two seconds of stereo at 48 kHz. Past this the decoder waits for
 // the sink to drain instead of growing the queue without bound.
 const int kAudioQueueLimit = 48000 * 2 * 2 * 2;
+
+// What FFmpeg's runtime dispatch settled on. Worth surfacing: an "SSE" build
+// on a machine reporting only MMX means the decoder is running its slowest
+// paths, and that is a hardware answer, not a bug to hunt.
+QString cpuFeatureSummary()
+{
+    const int flags = av_get_cpu_flags();
+    QStringList found;
+    if (flags & AV_CPU_FLAG_SSE2)   found << QString::fromLatin1("SSE2");
+    if (flags & AV_CPU_FLAG_SSE3)   found << QString::fromLatin1("SSE3");
+    if (flags & AV_CPU_FLAG_SSSE3)  found << QString::fromLatin1("SSSE3");
+    if (flags & AV_CPU_FLAG_SSE4)   found << QString::fromLatin1("SSE4.1");
+    if (flags & AV_CPU_FLAG_SSE42)  found << QString::fromLatin1("SSE4.2");
+    if (flags & AV_CPU_FLAG_AVX)    found << QString::fromLatin1("AVX");
+    if (found.isEmpty())
+        return QString::fromUtf8("sin SIMD");
+    return found.last();
+}
 
 QString avError(int code)
 {
@@ -487,6 +507,41 @@ void MediaDecoder::emitVideoFrame(AVFrame *frame)
     if (outWidth <= 0 || outHeight <= 0)
         return;
 
+    // Second-best GPU path. The driver refused a YUV surface, so the colour
+    // conversion stays on the CPU, but swscale writes straight into video
+    // memory and the resize still happens on the GPU. That removes both the
+    // staging copy and the software downscale, which is most of the cost.
+    if (presenter_ && presenter_->isReady() && !presenter_->usingOverlayFormat()) {
+        if (!scaler_ || frame->width != scaledWidth_ || frame->height != scaledHeight_) {
+            if (scaler_)
+                sws_freeContext(scaler_);
+            scaler_ = sws_getContext(frame->width, frame->height, AVPixelFormat(frame->format),
+                                     frame->width, frame->height, AV_PIX_FMT_BGRA,
+                                     SWS_POINT, 0, 0, 0);
+            scaledWidth_ = frame->width;
+            scaledHeight_ = frame->height;
+        }
+
+        if (scaler_) {
+            int surfaceStride = 0;
+            unsigned char *destination = presenter_->beginBgraFrame(
+                &surfaceStride, frame->width, frame->height);
+            if (destination) {
+                unsigned char *planes[4] = { destination, 0, 0, 0 };
+                int strides[4] = { surfaceStride, 0, 0, 0 };
+                sws_scale(scaler_, frame->data, frame->linesize, 0, frame->height,
+                          planes, strides);
+
+                QMutexLocker clockOnly(&mutex_);
+                clock_ = presentation;
+                clockOnly.unlock();
+
+                if (presenter_->endBgraFrame())
+                    return;
+            }
+        }
+    }
+
     if (!scaler_ || outWidth != scaledWidth_ || outHeight != scaledHeight_) {
         if (scaler_)
             sws_freeContext(scaler_);
@@ -693,4 +748,10 @@ void MediaDecoder::setLowLatencyMode(bool enabled)
         codec_->skip_frame = AVDISCARD_DEFAULT;
         codec_->flags2 &= ~AV_CODEC_FLAG2_FAST;
     }
+}
+
+
+QString MediaDecoder::cpuFeatures()
+{
+    return cpuFeatureSummary();
 }
