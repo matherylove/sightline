@@ -16,12 +16,43 @@
 #include "sightline_style.h"
 #include "widgets.h"
 
+// An artwork tile. Falls back to the seeded hatch pattern until the image
+// arrives, so the layout never jumps and an empty tile still reads as
+// "loading" rather than as "broken".
+class AlbumTile : public QWidget
+{
+public:
+    explicit AlbumTile(int side, QWidget *parent = 0) : QWidget(parent)
+    {
+        setFixedSize(side, side);
+    }
+
+    void setArtwork(const QPixmap &artwork, const QString &seed)
+    {
+        artwork_ = artwork;
+        seed_ = seed;
+        update();
+    }
+
+protected:
+    void paintEvent(QPaintEvent *)
+    {
+        QPainter painter(this);
+        SightlinePaint::drawArtwork(painter, rect(), artwork_, seed_);
+        SightlinePaint::drawFrame(painter, rect(), SightlineStyle::line());
+    }
+
+private:
+    QPixmap artwork_;
+    QString seed_;
+};
+
 // ================================================================= TrackRow
 
 TrackRow::TrackRow(QWidget *parent)
     : QWidget(parent), index_(0), playing_(false), hovered_(false)
 {
-    setFixedHeight(24);
+    setFixedHeight(32);
     setCursor(Qt::PointingHandCursor);
     setAttribute(Qt::WA_Hover, true);
 }
@@ -32,6 +63,12 @@ void TrackRow::setTrack(int index, const VideoItem &video, bool playing)
     video_ = video;
     playing_ = playing;
     setToolTip(video.title);
+    update();
+}
+
+void TrackRow::setArtwork(const QPixmap &artwork)
+{
+    artwork_ = artwork;
     update();
 }
 
@@ -63,12 +100,18 @@ void TrackRow::paintEvent(QPaintEvent *)
 
     painter.setFont(SightlinePaint::monoFont(10));
     painter.setPen(playing_ ? SightlineStyle::teal() : SightlineStyle::faint());
-    painter.drawText(QRect(12, 0, 16, height()), Qt::AlignVCenter | Qt::AlignRight,
+    painter.drawText(QRect(10, 0, 16, height()), Qt::AlignVCenter | Qt::AlignRight,
                      playing_ ? QString::fromUtf8("\xE2\x96\xB8") : QString::number(index_));
+
+    // Cropped square out of the 16:9 thumbnail: album art is square and a
+    // letterboxed strip here looks like a mistake.
+    const QRect art(32, 2, 28, 28);
+    SightlinePaint::drawArtwork(painter, art, artwork_, video_.id);
+    SightlinePaint::drawFrame(painter, art, SightlineStyle::line());
 
     const int durationWidth = 44;
     const int artistWidth = 120;
-    const int titleLeft = 38;
+    const int titleLeft = 68;
     const int titleWidth = qMax(60, width() - titleLeft - artistWidth - durationWidth - 24);
 
     painter.setFont(SightlinePaint::uiFont(11));
@@ -212,6 +255,7 @@ void LyricsView::paintEvent(QPaintEvent *)
 MusicPage::MusicPage(Library *library, PlaybackController *playback, QWidget *parent)
     : QWidget(parent),
       library_(library), playback_(playback),
+      albumTile_(0), nowTile_(0),
       albumTitle_(0), albumSubtitle_(0), albumKind_(0), trackLayout_(0),
       lyrics_(0), lyricsPanel_(0), lyricsButton_(0), lyricsStatus_(0),
       nowTitle_(0), nowArtist_(0), nowTime_(0), nowSeek_(0)
@@ -232,11 +276,8 @@ MusicPage::MusicPage(Library *library, PlaybackController *playback, QWidget *pa
     heroLayout->setContentsMargins(14, 14, 14, 14);
     heroLayout->setSpacing(14);
 
-    QLabel *art = new QLabel(hero);
-    art->setFixedSize(104, 104);
-    art->setStyleSheet(QString::fromLatin1(
-        "background: #1E3A3B; border: 1px solid #333E42;"));
-    heroLayout->addWidget(art, 0, Qt::AlignTop);
+    albumTile_ = new AlbumTile(104, hero);
+    heroLayout->addWidget(albumTile_, 0, Qt::AlignTop);
 
     QWidget *meta = new QWidget(hero);
     QVBoxLayout *metaLayout = new QVBoxLayout(meta);
@@ -313,10 +354,8 @@ MusicPage::MusicPage(Library *library, PlaybackController *playback, QWidget *pa
     nowLayout->setContentsMargins(10, 0, 10, 0);
     nowLayout->setSpacing(10);
 
-    QLabel *mini = new QLabel(nowBar);
-    mini->setFixedSize(28, 28);
-    mini->setStyleSheet(QString::fromLatin1("background: #1E3A3B; border: 1px solid #333E42;"));
-    nowLayout->addWidget(mini);
+    nowTile_ = new AlbumTile(28, nowBar);
+    nowLayout->addWidget(nowTile_);
 
     QWidget *text = new QWidget(nowBar);
     text->setFixedWidth(150);
@@ -397,6 +436,11 @@ MusicPage::MusicPage(Library *library, PlaybackController *playback, QWidget *pa
     root->addWidget(lyricsPanel_);
 
     connect(playback_, SIGNAL(positionChanged(double)), this, SLOT(onPositionChanged(double)));
+
+    // Artwork arrives asynchronously from the fetcher thread; without this
+    // the music view stays blank until something forces a rebuild.
+    if (library_)
+        connect(library_, SIGNAL(thumbnailReady(QString)), this, SLOT(onArtworkReady(QString)));
 }
 
 void MusicPage::onLyricsToggled()
@@ -429,8 +473,43 @@ void MusicPage::setAlbum(const QString &title, const QString &subtitle,
         trackLayout_->insertWidget(trackLayout_->count() - 1, row);
         trackRows_.append(row);
     }
-    for (int i = 0; i < tracks.size(); ++i)
+    for (int i = 0; i < tracks.size(); ++i) {
         trackRows_.at(i)->setTrack(i + 1, tracks.at(i), tracks.at(i).id == playingId_);
+        if (library_)
+            trackRows_.at(i)->setArtwork(library_->thumbnail(tracks.at(i)));
+    }
+
+    // The album tile borrows the first track's artwork. There is no album
+    // artwork as such in a YouTube Music listing, and an empty square next
+    // to a full track list looks like a failure rather than an absence.
+    if (!tracks.isEmpty() && library_)
+        albumTile_->setArtwork(library_->thumbnail(tracks.first()), tracks.first().id);
+    else
+        albumTile_->setArtwork(QPixmap(), title);
+}
+
+void MusicPage::setAlbumArtwork(const QPixmap &artwork)
+{
+    albumTile_->setArtwork(artwork, playingId_);
+}
+
+void MusicPage::onArtworkReady(const QString &videoId)
+{
+    if (!library_)
+        return;
+
+    const QPixmap artwork = library_->thumbnailIfPresent(videoId);
+    if (artwork.isNull())
+        return;
+
+    for (int i = 0; i < trackRows_.size(); ++i) {
+        if (trackRows_.at(i)->videoId() == videoId)
+            trackRows_.at(i)->setArtwork(artwork);
+    }
+    if (videoId == playingId_)
+        nowTile_->setArtwork(artwork, videoId);
+    if (!tracks_.isEmpty() && tracks_.first().id == videoId)
+        albumTile_->setArtwork(artwork, videoId);
 }
 
 void MusicPage::setNowPlaying(const VideoItem &video)
@@ -440,8 +519,14 @@ void MusicPage::setNowPlaying(const VideoItem &video)
     nowArtist_->setText(video.channelName);
     nowSeek_->setDuration(double(video.duration));
 
-    for (int i = 0; i < trackRows_.size() && i < tracks_.size(); ++i)
+    if (library_)
+        nowTile_->setArtwork(library_->thumbnail(video), video.id);
+
+    for (int i = 0; i < trackRows_.size() && i < tracks_.size(); ++i) {
         trackRows_.at(i)->setTrack(i + 1, tracks_.at(i), tracks_.at(i).id == playingId_);
+        if (library_)
+            trackRows_.at(i)->setArtwork(library_->thumbnail(tracks_.at(i)));
+    }
 }
 
 void MusicPage::setLyrics(const QList<LyricLine> &lines)

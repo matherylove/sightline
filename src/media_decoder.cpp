@@ -5,6 +5,7 @@
 
 #include "media_source.h"
 #include "d3d9_presenter.h"
+#include "os_capabilities.h"
 #include "sync_clock.h"
 
 extern "C" {
@@ -19,6 +20,7 @@ extern "C" {
 #include <libavutil/imgutils.h>
 #include <libavutil/mem.h>
 #include <libavutil/cpu.h>
+#include <libavutil/hwcontext.h>
 #include <libavutil/opt.h>
 #include <libswresample/swresample.h>
 #include <libswscale/swscale.h>
@@ -67,6 +69,7 @@ MediaDecoder::MediaDecoder(Kind kind, QObject *parent)
       lowLatency_(false), lateFrames_(0), transport_(NativeIo),
       ringIndex_(0),
       format_(0), avio_(0), codec_(0), scaler_(0), resampler_(0),
+      hwDevice_(0), hwTransfer_(0), hwWanted_(false), hwActive_(false),
       frame_(0), scaled_(0), packet_(0), ioBuffer_(0), scaledBuffer_(0),
       streamIndex_(-1),
       width_(0), height_(0), scaledWidth_(0), scaledHeight_(0),
@@ -258,7 +261,79 @@ bool MediaDecoder::openCodec(AVFormatContext *format, int streamIndex)
     codec_->thread_count = 0;
     codec_->thread_type = FF_THREAD_FRAME | FF_THREAD_SLICE;
 
+    // Hardware first: if it attaches, the CPU only has to move the decoded
+    // frame back from video memory instead of decoding it.
+    if (kind_ == VideoStream && hwWanted_)
+        attachHardwareDecoder();
+
     return avcodec_open2(codec_, decoder, 0) >= 0;
+}
+
+void MediaDecoder::setHardwareDecodingEnabled(bool enabled)
+{
+    hwWanted_ = enabled;
+}
+
+bool MediaDecoder::attachHardwareDecoder()
+{
+    // Two separate questions, and both have to be yes: does this Windows have
+    // the display stack DXVA2 needs, and was this FFmpeg built with it.
+    if (!OsCapabilities::hardwareDecodingAvailable())
+        return false;
+
+    // Only H.264 is worth accelerating here. VP9 and AV1 have no DXVA2 path
+    // on the hardware of this era, and asking for one costs a failed probe
+    // on every open.
+    if (codec_->codec_id != AV_CODEC_ID_H264 && codec_->codec_id != AV_CODEC_ID_MPEG2VIDEO)
+        return false;
+
+    const int created = av_hwdevice_ctx_create(&hwDevice_, AV_HWDEVICE_TYPE_DXVA2,
+                                               0, 0, 0);
+    if (created < 0 || !hwDevice_)
+        return false;
+
+    codec_->hw_device_ctx = av_buffer_ref(hwDevice_);
+    if (!codec_->hw_device_ctx) {
+        av_buffer_unref(&hwDevice_);
+        return false;
+    }
+
+    hwTransfer_ = av_frame_alloc();
+    if (!hwTransfer_) {
+        av_buffer_unref(&codec_->hw_device_ctx);
+        av_buffer_unref(&hwDevice_);
+        return false;
+    }
+
+    hwActive_ = true;
+    hwLabel_ = QString::fromLatin1("DXVA2");
+    return true;
+}
+
+// A hardware-decoded frame lives in video memory and has to come back before
+// anything can be done with it. When the decode was in software this is a
+// no-op and the original frame is returned untouched.
+AVFrame *MediaDecoder::resolveFrame(AVFrame *decoded)
+{
+    if (!hwActive_ || decoded->format != AV_PIX_FMT_DXVA2_VLD)
+        return decoded;
+
+    av_frame_unref(hwTransfer_);
+
+    // NV12 is what the DXVA2 surface actually holds, so asking for it avoids
+    // a conversion inside the transfer itself.
+    hwTransfer_->format = AV_PIX_FMT_NV12;
+    if (av_hwframe_transfer_data(hwTransfer_, decoded, 0) < 0) {
+        // Falling back rather than dropping: a transfer that fails once
+        // usually means the surface pool is exhausted, not that the stream
+        // is broken.
+        ++dropped_;
+        return 0;
+    }
+
+    hwTransfer_->best_effort_timestamp = decoded->best_effort_timestamp;
+    hwTransfer_->pts = decoded->pts;
+    return hwTransfer_;
 }
 
 void MediaDecoder::closeAll()
@@ -279,6 +354,12 @@ void MediaDecoder::closeAll()
     }
     if (ioBuffer_)
         av_freep(&ioBuffer_);
+
+    if (hwTransfer_)
+        av_frame_free(&hwTransfer_);
+    if (hwDevice_)
+        av_buffer_unref(&hwDevice_);
+    hwActive_ = false;
 
     if (scaler_) {
         sws_freeContext(scaler_);
@@ -676,10 +757,13 @@ void MediaDecoder::run()
                 // the stream is over, or the last frames are simply lost.
                 avcodec_send_packet(codec_, 0);
                 while (avcodec_receive_frame(codec_, frame_) >= 0) {
-                    if (kind_ == VideoStream)
-                        emitVideoFrame(frame_);
-                    else
+                    if (kind_ == VideoStream) {
+                        AVFrame *usable = resolveFrame(frame_);
+                        if (usable)
+                            emitVideoFrame(usable);
+                    } else {
                         queueAudio(frame_);
+                    }
                     av_frame_unref(frame_);
                 }
                 reachedEnd = true;
@@ -716,10 +800,13 @@ void MediaDecoder::run()
                 break;
             }
 
-            if (kind_ == VideoStream)
-                emitVideoFrame(frame_);
-            else
+            if (kind_ == VideoStream) {
+                AVFrame *usable = resolveFrame(frame_);
+                if (usable)
+                    emitVideoFrame(usable);
+            } else {
                 queueAudio(frame_);
+            }
 
             av_frame_unref(frame_);
         }

@@ -2,9 +2,11 @@
 
 #include <QTimer>
 
+#include "audio_pump.h"
 #include "audio_sink.h"
 #include "media_decoder.h"
 #include "net_transport.h"
+#include "os_capabilities.h"
 #include "d3d9_presenter.h"
 #include "sync_clock.h"
 
@@ -27,18 +29,25 @@ PlaybackController::PlaybackController(QObject *parent)
       hasUndo_(false),
       tickAccumulator_(0.0),
       clock_(0),
-      videoDecoder_(0), audioDecoder_(0), audioSink_(0), sync_(0), presenter_(0), surfaceWindow_(0), endedStreams_(0)
+      videoDecoder_(0), audioDecoder_(0), audioSink_(0), audioPump_(0), sync_(0), presenter_(0), surfaceWindow_(0), endedStreams_(0)
 {
     clock_ = new QTimer(this);
     clock_->setInterval(kTickMs);
     connect(clock_, SIGNAL(timeout()), this, SLOT(onTick()));
     audioSink_ = new AudioSink(this);
+
+    // Audio never touches the GUI thread again. This is the single change
+    // that keeps the clock steady, and the video is paced against that clock.
+    audioPump_ = new AudioPump(audioSink_, this);
+    audioPump_->start(QThread::TimeCriticalPriority);
     sync_ = new SyncClock;
     presenter_ = new D3D9Presenter;
 }
 
 PlaybackController::~PlaybackController()
 {
+    if (audioPump_)
+        audioPump_->stop();
     close();
     delete sync_;
     delete presenter_;
@@ -61,7 +70,13 @@ void PlaybackController::detachSurface()
 
 QString PlaybackController::presenterDescription() const
 {
-    return presenter_ ? presenter_->describe() : QString();
+    QString text = presenter_ ? presenter_->describe() : QString();
+
+    // Says which decode path is live, so the difference between an XP box and
+    // a Vista one is visible rather than guessed at.
+    if (videoDecoder_ && videoDecoder_->usingHardwareDecoding())
+        text = QString::fromUtf8("%1 \xC2\xB7 %2").arg(videoDecoder_->hardwareLabel()).arg(text);
+    return text;
 }
 
 bool PlaybackController::usingGpuPresentation() const
@@ -152,7 +167,6 @@ void PlaybackController::open(const VideoItem &video, const MediaFormat *videoFo
     // is opened first because it owns the clock everything else follows.
     if (audioFormat_.hasAudio() && !audioFormat_.url.isEmpty()) {
         audioDecoder_ = new MediaDecoder(MediaDecoder::AudioStream, this);
-        connect(audioDecoder_, SIGNAL(audioReady()), this, SLOT(onAudioReady()));
         connect(audioDecoder_, SIGNAL(endOfStream()), this, SLOT(onDecoderEnded()));
         connect(audioDecoder_, SIGNAL(failed(QString)), this, SLOT(onDecoderFailed(QString)));
         connect(audioDecoder_, SIGNAL(urlExpired()), this, SLOT(onUrlExpired()));
@@ -174,8 +188,10 @@ void PlaybackController::open(const VideoItem &video, const MediaFormat *videoFo
         if (opened) {
             audioDecoder_->setSyncClock(sync_);
             audioSink_->start(audioDecoder_->sampleRate(), audioDecoder_->channelCount());
-            audioSink_->setVolume(volume_);
+            audioSink_->setVolume(muted_ ? 0 : volume_);
             audioDecoder_->start();
+            audioPump_->setPaused(false);
+            audioPump_->attach(audioDecoder_);
         } else {
             delete audioDecoder_;
             audioDecoder_ = 0;
@@ -185,6 +201,10 @@ void PlaybackController::open(const VideoItem &video, const MediaFormat *videoFo
     if (videoFormat_.hasVideo() && !videoFormat_.url.isEmpty()) {
         videoDecoder_ = new MediaDecoder(MediaDecoder::VideoStream, this);
         videoDecoder_->setTargetSize(surfaceSize_);
+
+        // The best each Windows can do: DXVA2 from Vista onwards, software
+        // on XP because the display stack it needs does not exist there.
+        videoDecoder_->setHardwareDecodingEnabled(OsCapabilities::hardwareDecodingAvailable());
         connect(videoDecoder_, SIGNAL(frameReady(QImage, double)),
                 this, SLOT(onFrameReady(QImage, double)));
         connect(videoDecoder_, SIGNAL(openedStream(int, int, double)),
@@ -250,6 +270,8 @@ void PlaybackController::close()
     }
     if (presenter_)
         presenter_->shutdown();
+    if (audioPump_)
+        audioPump_->detach();
     if (audioDecoder_) {
         audioDecoder_->stop();
         delete audioDecoder_;
@@ -281,6 +303,7 @@ void PlaybackController::play()
     if (videoDecoder_) videoDecoder_->setPaused(false);
     if (audioDecoder_) audioDecoder_->setPaused(false);
     if (audioSink_) audioSink_->setPaused(false);
+    if (audioPump_) audioPump_->setPaused(false);
     setState(Playing);
 }
 
@@ -291,6 +314,7 @@ void PlaybackController::pause()
     if (videoDecoder_) videoDecoder_->setPaused(true);
     if (audioDecoder_) audioDecoder_->setPaused(true);
     if (audioSink_) audioSink_->setPaused(true);
+    if (audioPump_) audioPump_->setPaused(true);
     if (state_ == Playing)
         setState(Paused);
 }
@@ -513,15 +537,3 @@ void PlaybackController::onUrlExpired()
     emit urlExpired();
 }
 
-void PlaybackController::onAudioReady()
-{
-    if (!audioDecoder_ || !audioSink_ || !audioSink_->isOpen())
-        return;
-
-    // Hand over at most a quarter second at a time so a burst of decoded
-    // audio cannot block this thread inside the sound buffer lock.
-    const int chunk = audioDecoder_->sampleRate() * audioDecoder_->channelCount() * 2 / 4;
-    const QByteArray samples = audioDecoder_->takeAudio(chunk);
-    if (!samples.isEmpty())
-        audioSink_->write(samples);
-}

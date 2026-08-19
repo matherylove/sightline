@@ -4,6 +4,7 @@
 #include <QTextCodec>
 
 #include "main_window.h"
+#include "os_capabilities.h"
 #include "media_types.h"
 #include "sightline_style.h"
 
@@ -36,6 +37,10 @@ int main(int argc, char *argv[])
     qRegisterMetaType<QList<PlaylistItem> >("QList<PlaylistItem>");
     qRegisterMetaType<QList<VideoComment> >("QList<VideoComment>");
     qRegisterMetaType<QList<SponsorSegment> >("QList<SponsorSegment>");
+
+    // Decided once, up front: everything gated on the Windows version asks
+    // this rather than testing for itself.
+    OsCapabilities::probe();
 
     application.setStyleSheet(SightlineStyle::sheet());
 

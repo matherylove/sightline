@@ -71,6 +71,8 @@ SOURCES += \
     src/sync_clock.cpp \
     src/oauth_device.cpp \
     src/d3d9_presenter.cpp \
+    src/os_capabilities.cpp \
+    src/audio_pump.cpp \
     src/media_source.cpp \
     src/media_decoder.cpp \
     src/audio_sink.cpp \
@@ -100,6 +102,8 @@ HEADERS += \
     src/sync_clock.h \
     src/oauth_device.h \
     src/d3d9_presenter.h \
+    src/os_capabilities.h \
+    src/audio_pump.h \
     src/media_source.h \
     src/media_decoder.h \
     src/audio_sink.h \

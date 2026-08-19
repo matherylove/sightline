@@ -2,6 +2,7 @@
 #define SIGHTLINE_MUSIC_PAGE_H
 
 #include <QList>
+#include <QPixmap>
 #include <QWidget>
 
 #include "media_types.h"
@@ -11,6 +12,7 @@ class QPushButton;
 class QScrollArea;
 class QVBoxLayout;
 class Library;
+class AlbumTile;
 class PlaybackController;
 class SeekBar;
 
@@ -23,6 +25,7 @@ public:
     explicit TrackRow(QWidget *parent = 0);
 
     void setTrack(int index, const VideoItem &video, bool playing);
+    void setArtwork(const QPixmap &artwork);
     QString videoId() const { return video_.id; }
 
 signals:
@@ -36,6 +39,7 @@ protected:
 
 private:
     VideoItem video_;
+    QPixmap artwork_;
     int index_;
     bool playing_;
     bool hovered_;
@@ -83,6 +87,7 @@ public:
     void setNowPlaying(const VideoItem &video);
     void setLyrics(const QList<LyricLine> &lines);
     void setLyricsVisible(bool visible);
+    void setAlbumArtwork(const QPixmap &artwork);
 
 signals:
     void trackActivated(const QString &videoId);
@@ -91,12 +96,15 @@ signals:
 
 private slots:
     void onPositionChanged(double seconds);
+    void onArtworkReady(const QString &videoId);
     void onLyricsToggled();
 
 private:
     Library *library_;
     PlaybackController *playback_;
 
+    AlbumTile *albumTile_;
+    AlbumTile *nowTile_;
     QLabel *albumTitle_;
     QLabel *albumSubtitle_;
     QLabel *albumKind_;

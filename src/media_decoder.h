@@ -15,6 +15,7 @@ struct AVIOContext;
 struct AVFrame;
 struct AVPacket;
 struct SwsContext;
+struct AVBufferRef;
 struct SwrContext;
 
 class MediaSource;
@@ -88,6 +89,13 @@ public:
     // The SIMD level FFmpeg's runtime dispatch chose on this CPU.
     static QString cpuFeatures();
 
+    // Hardware decoding, when the machine has it. Gated on Vista or newer at
+    // runtime: DXVA2 needs WDDM and simply does not exist on XP. Asking for
+    // it there is not an error, it just never engages.
+    void setHardwareDecodingEnabled(bool enabled);
+    bool usingHardwareDecoding() const { return hwActive_; }
+    QString hardwareLabel() const { return hwLabel_; }
+
     // Audio only: interleaved signed 16-bit, the format every Windows sink
     // from waveOut upwards accepts without negotiation.
     int sampleRate() const { return sampleRate_; }
@@ -112,6 +120,8 @@ protected:
 
 private:
     bool openCodec(AVFormatContext *format, int streamIndex);
+    bool attachHardwareDecoder();
+    AVFrame *resolveFrame(AVFrame *decoded);
     void closeAll();
     void emitVideoFrame(AVFrame *frame);
     bool waitUntilDue(double presentationTime);
@@ -134,6 +144,11 @@ private:
     AVIOContext *avio_;
     AVCodecContext *codec_;
     SwsContext *scaler_;
+    AVBufferRef *hwDevice_;
+    AVFrame *hwTransfer_;
+    bool hwWanted_;
+    bool hwActive_;
+    QString hwLabel_;
     SwrContext *resampler_;
     AVFrame *frame_;
     AVFrame *scaled_;

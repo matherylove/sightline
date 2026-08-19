@@ -14,6 +14,7 @@
 class QTimer;
 class MediaDecoder;
 class AudioSink;
+class AudioPump;
 class SyncClock;
 class D3D9Presenter;
 
@@ -110,7 +111,7 @@ private slots:
     void onDecoderFailed(const QString &message);
     void onDecoderEnded();
     void onUrlExpired();
-    void onAudioReady();
+
 
 private:
     void setState(State state);
@@ -144,6 +145,7 @@ private:
     MediaDecoder *videoDecoder_;
     MediaDecoder *audioDecoder_;
     AudioSink *audioSink_;
+    AudioPump *audioPump_;
     SyncClock *sync_;
     D3D9Presenter *presenter_;
     WId surfaceWindow_;
