@@ -22,6 +22,7 @@
 
 #include "dialogs.h"
 #include "library.h"
+#include "lyrics_service.h"
 #include "listening_stats.h"
 #include "music_page.h"
 #include "pip_window.h"
@@ -42,7 +43,7 @@
 MainWindow::MainWindow(QWidget *parent)
     : QWidget(parent),
       settingsStore_(0), library_(0), stats_(0), extractor_(0),
-      sponsorBlock_(0), playback_(0),
+      sponsorBlock_(0), lyrics_(0), playback_(0),
       titleBar_(0), menuBar_(0), sidebar_(0), searchEdit_(0),
       crumbLabel_(0), crumbDetail_(0), stack_(0), statusBar_(0),
       gridScroll_(0), grid_(0), player_(0), music_(0), statsPage_(0), pip_(0),
@@ -96,6 +97,11 @@ bool MainWindow::initialise(QString *error)
     connect(sponsorBlock_, SIGNAL(onlineChanged(bool)),
             this, SLOT(onSponsorBlockOnlineChanged(bool)));
 
+    lyrics_ = new LyricsService(paths_, this);
+    connect(lyrics_, SIGNAL(lyricsReady(QString, QList<LyricLine>, bool)),
+            this, SLOT(onLyricsReady(QString, QList<LyricLine>, bool)));
+    connect(lyrics_, SIGNAL(lyricsMissing(QString)), this, SLOT(onLyricsMissing(QString)));
+
     playback_ = new PlaybackController(this);
     playback_->applySettings(settings_);
     connect(playback_, SIGNAL(stateChanged(PlaybackController::State)),
@@ -107,6 +113,7 @@ bool MainWindow::initialise(QString *error)
     connect(playback_, SIGNAL(segmentPending(SponsorSegment::Category, double, double)),
             this, SLOT(onSegmentPending(SponsorSegment::Category, double, double)));
     connect(playback_, SIGNAL(frameReady(QImage)), this, SLOT(onFrameReady(QImage)));
+    connect(playback_, SIGNAL(gpuFramePresented()), this, SLOT(onGpuFramePresented()));
     connect(playback_, SIGNAL(urlExpired()), this, SLOT(onUrlExpired()));
     connect(playback_, SIGNAL(failed(QString)), this, SLOT(onPlaybackFailed(QString)));
 
@@ -154,6 +161,30 @@ void MainWindow::onSurfaceResized(const QSize &size)
     // event is a straight blit; rescaling twice is the sort of waste these
     // machines cannot absorb.
     playback_->setTargetSurfaceSize(size);
+}
+
+void MainWindow::onLyricsReady(const QString &videoId, const QList<LyricLine> &lines, bool synced)
+{
+    Q_UNUSED(synced);
+    if (videoId != currentVideoId_)
+        return;
+    music_->setLyrics(lines);
+    refreshStatusBar();
+}
+
+void MainWindow::onLyricsMissing(const QString &videoId)
+{
+    if (videoId != currentVideoId_)
+        return;
+    music_->setLyrics(QList<LyricLine>());
+}
+
+void MainWindow::onGpuFramePresented()
+{
+    if (pip_ && pip_->isVisible())
+        pip_->surface()->setGpuPresenting(true);
+    else
+        player_->surface()->setGpuPresenting(true);
 }
 
 void MainWindow::onFrameReady(const QImage &frame)
@@ -695,6 +726,9 @@ void MainWindow::onVideoReady(const QString &token, const VideoItem &video)
     }
 
     if (currentIsMusic_) {
+        // Lyrics are looked up per track, once, and cached as .lrc.
+        lyrics_->request(currentVideo_);
+
         // Audio only: decoding an H.264 track nobody is looking at is the
         // one thing guaranteed to make music playback stutter on a P4.
         music_->setNowPlaying(currentVideo_);
@@ -720,8 +754,14 @@ void MainWindow::onVideoReady(const QString &token, const VideoItem &video)
         playback_->attachSurface(player_->surface()->surfaceHandle(),
                                  player_->surface()->size());
 
+    // Painting is not suppressed here. The canvas keeps drawing until D3D
+    // reports that it actually put a frame on screen, so a presenter that
+    // was configured but never took a frame can no longer leave it black.
+    player_->surface()->setGpuPresenting(false);
+    if (pip_)
+        pip_->surface()->setGpuPresenting(false);
+
     playback_->open(currentVideo_, videoFormat, audioFormat, double(resume));
-    player_->surface()->setGpuPresenting(playback_->usingGpuPresentation());
 
     if (settings_.trackListening)
         stats_->beginPlay(currentVideo_, currentIsMusic_);
@@ -1040,7 +1080,6 @@ void MainWindow::onPipRequested()
     // back to software painting while the PiP is up.
     player_->surface()->setGpuPresenting(false);
     playback_->attachSurface(pip_->surface()->surfaceHandle(), pip_->surface()->size());
-    pip_->surface()->setGpuPresenting(playback_->usingGpuPresentation());
 }
 
 void MainWindow::onPipClosed()
@@ -1052,7 +1091,6 @@ void MainWindow::onPipClosed()
 
     playback_->attachSurface(player_->surface()->surfaceHandle(),
                              player_->surface()->size());
-    player_->surface()->setGpuPresenting(playback_->usingGpuPresentation());
     showView(PlayerView);
 }
 

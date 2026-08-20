@@ -575,6 +575,7 @@ LinkAccountDialog::LinkAccountDialog(QWidget *parent)
       codeLabel_(0), statusLabel_(0), urlLabel_(0), remaining_(900), counting_(false)
 {
     setDialogWidth(660);
+    setMinimumHeight(470);
     QVBoxLayout *layout = contentLayout();
 
     QLabel *heading = new QLabel(
@@ -655,7 +656,14 @@ LinkAccountDialog::LinkAccountDialog(QWidget *parent)
     statusLabel_->setFont(SightlinePaint::monoFont(10));
     statusLabel_->setObjectName(QString::fromLatin1("dimLabel"));
     statusLabel_->setStyleSheet(QString::fromLatin1("border-top: 1px solid #333E42; padding-top: 9px;"));
-    layout->addWidget(statusLabel_);
+
+    // Without wrapping and a minimum height the long "no client id" message
+    // was clipped to a single line and the buttons sat on top of it.
+    statusLabel_->setWordWrap(true);
+    statusLabel_->setMinimumHeight(48);
+    statusLabel_->setAlignment(Qt::AlignTop | Qt::AlignLeft);
+    statusLabel_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::MinimumExpanding);
+    layout->addWidget(statusLabel_, 1);
 
     QHBoxLayout *buttons = new QHBoxLayout;
     buttons->setSpacing(6);

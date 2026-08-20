@@ -2,6 +2,10 @@
 
 #include <QTimer>
 
+extern "C" {
+#include <libavutil/pixfmt.h>
+}
+
 #include "audio_pump.h"
 #include "audio_sink.h"
 #include "media_decoder.h"
@@ -229,14 +233,21 @@ void PlaybackController::open(const VideoItem &video, const MediaFormat *videoFo
             // offscreen surface matches the stream exactly and StretchRect
             // does the resize in one step.
             if (surfaceWindow_ && videoDecoder_->width() > 0) {
+                const D3D9Presenter::Layout layout =
+                    (videoDecoder_->pixelFormat() == int(AV_PIX_FMT_NV12))
+                        ? D3D9Presenter::LayoutNv12 : D3D9Presenter::LayoutYv12;
+
                 QString presenterError;
                 if (presenter_->initialise(surfaceWindow_,
                                            QSize(videoDecoder_->width(), videoDecoder_->height()),
-                                           &presenterError)) {
+                                           layout, &presenterError)) {
                     presenter_->resize(surfaceSize_);
                     videoDecoder_->setPresenter(presenter_);
                 }
             }
+
+            connect(videoDecoder_, SIGNAL(framePresentedOnGpu()),
+                    this, SIGNAL(gpuFramePresented()));
             // With no audio track there is nothing to follow, so the clock
             // free-runs from a monotonic timer and the video paces itself
             // against real time instead of decoding flat out.

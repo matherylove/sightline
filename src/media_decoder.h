@@ -56,6 +56,10 @@ public:
     void requestSeek(double seconds);
     void setPaused(bool paused);
 
+    // The pixel format the decoder is producing, once it is open. Zero
+    // before that. Used to choose the presenter's surface layout.
+    int pixelFormat() const { return pixelFormat_; }
+
     // Sized so the scaler output matches the surface without a second
     // rescale in the paint event. Zero keeps the native size.
     void setTargetSize(const QSize &size);
@@ -109,6 +113,12 @@ public:
 
 signals:
     void frameReady(const QImage &frame, double presentationTime);
+
+    // Tells the view that Direct3D put this frame on screen itself, so Qt
+    // should stop painting over the window. Driven by real presentation
+    // rather than by intent, because a path that was configured but is not
+    // actually taking frames used to leave the canvas blank.
+    void framePresentedOnGpu();
     void audioReady();
     void openedStream(int width, int height, double duration);
     void endOfStream();
@@ -128,6 +138,7 @@ private:
     void queueAudio(AVFrame *frame);
     void performSeek();
 
+    static int interruptCallback(void *opaque);
     static int readPacket(void *opaque, unsigned char *buffer, int size);
     static qint64 seekPacket(void *opaque, qint64 offset, int whence);
 
@@ -156,7 +167,9 @@ private:
     unsigned char *ioBuffer_;
     unsigned char *scaledBuffer_;
     int streamIndex_;
+    volatile bool abortRequested_;
 
+    int pixelFormat_;
     int width_;
     int height_;
     int scaledWidth_;

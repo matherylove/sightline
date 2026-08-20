@@ -88,6 +88,9 @@ public:
     QList<SponsorSegment> segments() const { return segments_; }
 
 signals:
+    // Emitted the first time Direct3D shows a frame by itself, so the view
+    // can stop painting over the window.
+    void gpuFramePresented();
     void urlExpired();
     void stateChanged(PlaybackController::State state);
     void positionChanged(double seconds);

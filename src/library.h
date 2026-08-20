@@ -74,6 +74,10 @@ public:
     QPixmap channelAvatar(const ChannelItem &channel);
     void rememberChannelAvatar(const QString &channelId, const QString &url);
 
+    // Any small square image keyed by an arbitrary string. Used for comment
+    // author pictures, which have no id of their own.
+    QPixmap avatarFor(const QString &key, const QString &url);
+
     int importSubscriptionsCsv(const QString &path, QString *error = 0);
 
 signals:

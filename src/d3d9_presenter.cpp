@@ -12,12 +12,13 @@ namespace {
 // YV12 as a FourCC. Every XP-era driver that could play a DVD accepts this
 // as an offscreen plain surface and converts it on the blit.
 const D3DFORMAT kFormatYv12 = static_cast<D3DFORMAT>(MAKEFOURCC('Y', 'V', '1', '2'));
+const D3DFORMAT kFormatNv12 = static_cast<D3DFORMAT>(MAKEFOURCC('N', 'V', '1', '2'));
 #endif
 }
 
 D3D9Presenter::D3D9Presenter()
     : d3d_(0), device_(0), surface_(0), windowHandle_(0),
-      ready_(false), usingYv12_(false), deviceLost_(false)
+      layout_(LayoutBgra), ready_(false), usingYv12_(false), deviceLost_(false)
 {
 }
 
@@ -28,13 +29,14 @@ D3D9Presenter::~D3D9Presenter()
 
 #ifdef Q_OS_WIN
 
-bool D3D9Presenter::initialise(WId window, const QSize &videoSize, QString *error)
+bool D3D9Presenter::initialise(WId window, const QSize &videoSize, Layout layout, QString *error)
 {
     QMutexLocker locker(&mutex_);
     shutdown();
 
     windowHandle_ = reinterpret_cast<void *>(window);
     videoSize_ = videoSize;
+    layout_ = layout;
 
     RECT client;
     GetClientRect(static_cast<HWND>(windowHandle_), &client);
@@ -105,17 +107,24 @@ bool D3D9Presenter::createSurface(const QSize &videoSize, QString *error)
     // Ask the driver whether it can convert YV12 to the back buffer format on
     // a blit. If it can, the colour conversion and the scaling both land on
     // the GPU and swscale disappears from the CPU budget entirely.
-    const bool canYv12 = SUCCEEDED(d3d->CheckDeviceFormatConversion(
-        D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL, kFormatYv12, D3DFMT_X8R8G8B8));
-
     IDirect3DSurface9 *surface = 0;
     HRESULT result = E_FAIL;
 
-    if (canYv12) {
-        result = device->CreateOffscreenPlainSurface(
-            videoSize.width(), videoSize.height(), kFormatYv12,
-            D3DPOOL_DEFAULT, &surface, 0);
+    const D3DFORMAT wanted = (layout_ == LayoutNv12) ? kFormatNv12
+                           : (layout_ == LayoutYv12) ? kFormatYv12
+                                                     : D3DFMT_X8R8G8B8;
+
+    if (layout_ != LayoutBgra) {
+        const bool converts = SUCCEEDED(d3d->CheckDeviceFormatConversion(
+            D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL, wanted, D3DFMT_X8R8G8B8));
+        if (converts) {
+            result = device->CreateOffscreenPlainSurface(
+                videoSize.width(), videoSize.height(), wanted,
+                D3DPOOL_DEFAULT, &surface, 0);
+        }
         usingYv12_ = SUCCEEDED(result);
+        if (!usingYv12_)
+            layout_ = LayoutBgra;
     }
 
     if (FAILED(result)) {
@@ -231,8 +240,8 @@ bool D3D9Presenter::present(const unsigned char *y, int yStride,
         surface = static_cast<IDirect3DSurface9 *>(surface_);
     }
 
-    if (!usingYv12_)
-        return false;   // the caller uses presentBgra instead
+    if (layout_ != LayoutYv12)
+        return false;   // the caller uses presentNv12 or presentBgra instead
 
     D3DLOCKED_RECT locked;
     if (FAILED(surface->LockRect(&locked, 0, D3DLOCK_NOSYSLOCK)))
@@ -357,6 +366,47 @@ bool D3D9Presenter::endBgraFrame()
     return shown;
 }
 
+bool D3D9Presenter::presentNv12(const unsigned char *y, int yStride,
+                                const unsigned char *uv, int uvStride,
+                                int width, int height)
+{
+    QMutexLocker locker(&mutex_);
+    if (!ready_ || !device_ || !surface_ || layout_ != LayoutNv12)
+        return false;
+
+    IDirect3DDevice9 *device = static_cast<IDirect3DDevice9 *>(device_);
+    if (deviceLost_ || FAILED(device->TestCooperativeLevel())) {
+        if (!handleLostDevice())
+            return false;
+    }
+
+    if (width != videoSize_.width() || height != videoSize_.height()) {
+        releaseSurface();
+        if (!createSurface(QSize(width, height), 0))
+            return false;
+    }
+
+    IDirect3DSurface9 *surface = static_cast<IDirect3DSurface9 *>(surface_);
+    D3DLOCKED_RECT locked;
+    if (FAILED(surface->LockRect(&locked, 0, D3DLOCK_NOSYSLOCK)))
+        return false;
+
+    unsigned char *base = static_cast<unsigned char *>(locked.pBits);
+    const int pitch = locked.Pitch;
+
+    for (int row = 0; row < height; ++row)
+        memcpy(base + row * pitch, y + row * yStride, width);
+
+    // NV12 keeps chroma interleaved directly after the luma plane, so it is
+    // one copy rather than the two YV12 needs.
+    unsigned char *chroma = base + pitch * height;
+    for (int row = 0; row < height / 2; ++row)
+        memcpy(chroma + row * pitch, uv + row * uvStride, width);
+
+    surface->UnlockRect();
+    return blitToScreen(width, height);
+}
+
 bool D3D9Presenter::presentBgra(const unsigned char *pixels, int stride, int width, int height)
 {
     int surfaceStride = 0;
@@ -375,14 +425,16 @@ QString D3D9Presenter::describe() const
 {
     if (!ready_)
         return QString::fromUtf8("D3D9 no disponible");
-    if (usingYv12_)
+    if (layout_ == LayoutYv12)
         return QString::fromUtf8("D3D9 YV12: color y escalado en GPU");
+    if (layout_ == LayoutNv12)
+        return QString::fromUtf8("D3D9 NV12: color y escalado en GPU");
     return QString::fromUtf8("D3D9 BGRA: escalado en GPU, color en CPU");
 }
 
 #else
 
-bool D3D9Presenter::initialise(WId, const QSize &, QString *error)
+bool D3D9Presenter::initialise(WId, const QSize &, Layout, QString *error)
 {
     if (error) *error = QString::fromUtf8("Direct3D 9 solo existe en Windows.");
     return false;
@@ -396,6 +448,8 @@ void D3D9Presenter::resize(const QSize &) {}
 bool D3D9Presenter::present(const unsigned char *, int, const unsigned char *, int,
                             const unsigned char *, int, int, int) { return false; }
 bool D3D9Presenter::presentBgra(const unsigned char *, int, int, int) { return false; }
+bool D3D9Presenter::presentNv12(const unsigned char *, int, const unsigned char *, int,
+                                int, int) { return false; }
 unsigned char *D3D9Presenter::beginBgraFrame(int *, int, int) { return 0; }
 bool D3D9Presenter::endBgraFrame() { return false; }
 bool D3D9Presenter::blitToScreen(int, int) { return false; }

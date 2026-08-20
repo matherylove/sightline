@@ -71,8 +71,8 @@ MediaDecoder::MediaDecoder(Kind kind, QObject *parent)
       format_(0), avio_(0), codec_(0), scaler_(0), resampler_(0),
       hwDevice_(0), hwTransfer_(0), hwWanted_(false), hwActive_(false),
       frame_(0), scaled_(0), packet_(0), ioBuffer_(0), scaledBuffer_(0),
-      streamIndex_(-1),
-      width_(0), height_(0), scaledWidth_(0), scaledHeight_(0),
+      streamIndex_(-1), abortRequested_(false),
+      pixelFormat_(0), width_(0), height_(0), scaledWidth_(0), scaledHeight_(0),
       frameRate_(0.0), duration_(0.0), timeBase_(0.0),
       sampleRate_(0), channels_(0), dropped_(0),
       clock_(0.0), seekTarget_(0.0), seekPending_(false),
@@ -86,6 +86,16 @@ MediaDecoder::~MediaDecoder()
     stop();
     closeAll();
     delete source_;
+}
+
+// libavformat calls this while it is blocked in a socket read. Without it a
+// stop or a format change waits for the full rw_timeout — fifteen seconds —
+// and the old code gave up after three and deleted a still-running thread,
+// which is exactly the freeze that showed up when switching formats.
+int MediaDecoder::interruptCallback(void *opaque)
+{
+    MediaDecoder *self = static_cast<MediaDecoder *>(opaque);
+    return self->abortRequested_ ? 1 : 0;
 }
 
 int MediaDecoder::readPacket(void *opaque, unsigned char *buffer, int size)
@@ -151,6 +161,10 @@ bool MediaDecoder::openStream(const QString &url, QString *error, Transport tran
         format_->flags |= AVFMT_FLAG_CUSTOM_IO;
     }
 
+    abortRequested_ = false;
+    format_->interrupt_callback.callback = &MediaDecoder::interruptCallback;
+    format_->interrupt_callback.opaque = this;
+
     // The adaptive files are fragmented MP4 or WebM with a moov at the front,
     // so a small probe is enough and keeps the first frame quick.
     format_->probesize = 512 * 1024;
@@ -198,6 +212,12 @@ bool MediaDecoder::openStream(const QString &url, QString *error, Transport tran
     if (kind_ == VideoStream) {
         width_ = codec_->width;
         height_ = codec_->height;
+
+        // With hardware decoding attached the frames come back as NV12 after
+        // the transfer, whatever the codec context nominally says.
+        pixelFormat_ = hwActive_ ? int(AV_PIX_FMT_NV12) : int(codec_->pix_fmt);
+        if (pixelFormat_ == int(AV_PIX_FMT_NONE))
+            pixelFormat_ = int(AV_PIX_FMT_YUV420P);
         const AVRational guessed = av_guess_frame_rate(format_, stream, 0);
         frameRate_ = guessed.den > 0 ? av_q2d(guessed) : 0.0;
     } else {
@@ -381,6 +401,10 @@ void MediaDecoder::closeAll()
 
 void MediaDecoder::stop()
 {
+    // Set before the mutex: the interrupt callback runs on this thread from
+    // inside libavformat and must not have to take a lock to answer.
+    abortRequested_ = true;
+
     QMutexLocker locker(&mutex_);
     stopping_ = true;
     locker.unlock();
@@ -389,8 +413,11 @@ void MediaDecoder::stop()
     if (source_)
         source_->close();
 
-    if (isRunning())
-        wait(3000);
+    // Ten seconds, and it should never come close: the interrupt callback
+    // makes the blocking read return immediately. Deleting a thread that is
+    // still inside libavformat is how the format switch used to hang.
+    if (isRunning() && !wait(10000))
+        terminate();
 }
 
 void MediaDecoder::requestSeek(double seconds)
@@ -547,20 +574,33 @@ void MediaDecoder::emitVideoFrame(AVFrame *frame)
 
     // The GPU path: hand over the planes as they came out of the decoder.
     // No colour conversion, no scaling, no copy into a QImage.
-    if (presenter_ && presenter_->isReady() && presenter_->usingOverlayFormat()
-        && frame->format == AV_PIX_FMT_YUV420P) {
-        QMutexLocker clockOnly(&mutex_);
-        clock_ = presentation;
-        clockOnly.unlock();
+    //
+    // Which call applies depends on what the decoder produced. DXVA2 gives
+    // NV12; software H.264 gives planar YUV420P. Sending one to the other's
+    // entry point is how the picture goes black while the audio is fine.
+    if (presenter_ && presenter_->isReady()) {
+        bool shown = false;
 
-        if (presenter_->present(frame->data[0], frame->linesize[0],
-                                frame->data[1], frame->linesize[1],
-                                frame->data[2], frame->linesize[2],
-                                frame->width, frame->height)) {
+        if (frame->format == AV_PIX_FMT_YUV420P && presenter_->acceptsPlanar()) {
+            shown = presenter_->present(frame->data[0], frame->linesize[0],
+                                        frame->data[1], frame->linesize[1],
+                                        frame->data[2], frame->linesize[2],
+                                        frame->width, frame->height);
+        } else if (frame->format == AV_PIX_FMT_NV12 && presenter_->acceptsNv12()) {
+            shown = presenter_->presentNv12(frame->data[0], frame->linesize[0],
+                                            frame->data[1], frame->linesize[1],
+                                            frame->width, frame->height);
+        }
+
+        if (shown) {
+            QMutexLocker clockOnly(&mutex_);
+            clock_ = presentation;
+            clockOnly.unlock();
+            emit framePresentedOnGpu();
             return;
         }
-        // A failed blit falls through to the software path rather than
-        // dropping the frame: a lost device should not look like a stall.
+        // Anything else falls through to software. A frame that the GPU path
+        // could not take must still reach the screen, not vanish.
     }
 
     // At most two frames outstanding towards the GUI thread. Past that the

@@ -34,7 +34,15 @@ public:
     // Created against the surface's native window. Multithreaded because the
     // decoder thread uploads frames directly, without a trip through the
     // event loop and without a QImage in between.
-    bool initialise(WId window, const QSize &videoSize, QString *error = 0);
+    // The surface format follows the decoder's output. DXVA2 returns NV12,
+    // software H.264 returns planar YUV420P, and picking the wrong one is
+    // how the picture ends up black while the audio plays fine.
+    enum Layout { LayoutYv12, LayoutNv12, LayoutBgra };
+
+    bool initialise(WId window, const QSize &videoSize, Layout layout, QString *error = 0);
+    Layout layout() const { return layout_; }
+    bool acceptsPlanar() const { return layout_ == LayoutYv12; }
+    bool acceptsNv12() const { return layout_ == LayoutNv12; }
     void shutdown();
     bool isReady() const { return ready_; }
 
@@ -44,6 +52,11 @@ public:
                  const unsigned char *u, int uStride,
                  const unsigned char *v, int vStride,
                  int width, int height);
+
+    // NV12: luma plane plus one interleaved chroma plane.
+    bool presentNv12(const unsigned char *y, int yStride,
+                     const unsigned char *uv, int uvStride,
+                     int width, int height);
 
     // The second-best path: the caller has already converted to BGRA, and
     // the GPU still does the scaling and the blit. Worth having because a
@@ -60,13 +73,14 @@ public:
     void resize(const QSize &clientSize);
 
     QString adapterName() const { return adapterName_; }
-    bool usingOverlayFormat() const { return usingYv12_; }
+    bool usingOverlayFormat() const { return layout_ != LayoutBgra; }
     bool usingGpuScaling() const { return ready_; }
     QString describe() const;
 
 private:
     bool createDevice(QString *error);
     bool createSurface(const QSize &videoSize, QString *error);
+    Layout layout_;
     void releaseSurface();
     bool handleLostDevice();
     bool blitToScreen(int width, int height);

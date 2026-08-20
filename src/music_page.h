@@ -13,6 +13,7 @@ class QScrollArea;
 class QVBoxLayout;
 class Library;
 class AlbumTile;
+class GlyphButton;
 class PlaybackController;
 class SeekBar;
 
@@ -105,6 +106,7 @@ private:
 
     AlbumTile *albumTile_;
     AlbumTile *nowTile_;
+    GlyphButton *playPause_;
     QLabel *albumTitle_;
     QLabel *albumSubtitle_;
     QLabel *albumKind_;

@@ -73,6 +73,8 @@ SOURCES += \
     src/d3d9_presenter.cpp \
     src/os_capabilities.cpp \
     src/audio_pump.cpp \
+    src/lyrics_service.cpp \
+    src/lyrics_text.cpp \
     src/media_source.cpp \
     src/media_decoder.cpp \
     src/audio_sink.cpp \
@@ -104,6 +106,7 @@ HEADERS += \
     src/d3d9_presenter.h \
     src/os_capabilities.h \
     src/audio_pump.h \
+    src/lyrics_service.h \
     src/media_source.h \
     src/media_decoder.h \
     src/audio_sink.h \

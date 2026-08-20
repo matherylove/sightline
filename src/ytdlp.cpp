@@ -724,6 +724,7 @@ VideoComment YtDlp::commentFromJson(const QJsonObject &object)
     comment.id = stringValue(object, "id");
     comment.parentId = stringValue(object, "parent");
     comment.author = stringValue(object, "author");
+    comment.authorThumbnail = stringValue(object, "author_thumbnail");
     comment.text = stringValue(object, "text");
     comment.likeCount = int(intValue(object, "like_count"));
     comment.replyCount = int(intValue(object, "reply_count"));

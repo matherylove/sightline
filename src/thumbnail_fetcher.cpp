@@ -120,7 +120,8 @@ void ThumbnailFetcher::runWorker()
 
         // The i.ytimg fallbacks only make sense for a video id; a channel
         // avatar key has no equivalent and would just fetch a 404 twice.
-        if (!videoId.startsWith(QLatin1String("ch_"))) {
+        if (!videoId.startsWith(QLatin1String("ch_"))
+            && !videoId.startsWith(QLatin1String("cm_"))) {
             candidates << QString::fromLatin1("https://i.ytimg.com/vi/") + videoId
                             + QString::fromLatin1("/hqdefault.jpg");
             candidates << QString::fromLatin1("https://i.ytimg.com/vi/") + videoId
@@ -150,8 +151,9 @@ void ThumbnailFetcher::runWorker()
 
         // Stored at grid size, not at source size: a hundred 480x360 images
         // in memory is a real cost on a machine with 512 MB.
-        const QSize target = videoId.startsWith(QLatin1String("ch_"))
-            ? QSize(56, 56) : QSize(320, 180);
+        const bool isAvatar = videoId.startsWith(QLatin1String("ch_"))
+                           || videoId.startsWith(QLatin1String("cm_"));
+        const QSize target = isAvatar ? QSize(56, 56) : QSize(320, 180);
         const QImage scaled = image.scaled(target, Qt::KeepAspectRatioByExpanding,
                                            Qt::SmoothTransformation);
         if (scaled.save(path, "JPG", 82))

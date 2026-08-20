@@ -870,6 +870,181 @@ void VideoSurface::paintEvent(QPaintEvent *)
     }
 }
 
+// =============================================================== GlyphButton
+
+GlyphButton::GlyphButton(Glyph glyph, QWidget *parent)
+    : QAbstractButton(parent), glyph_(glyph), accent_(false), hovered_(false)
+{
+    setFixedSize(26, 22);
+    setFocusPolicy(Qt::NoFocus);
+    setCursor(Qt::PointingHandCursor);
+    setAttribute(Qt::WA_Hover, true);
+}
+
+QSize GlyphButton::sizeHint() const
+{
+    return QSize(26, 22);
+}
+
+void GlyphButton::setGlyph(Glyph glyph)
+{
+    glyph_ = glyph;
+    update();
+}
+
+void GlyphButton::setAccent(bool accent)
+{
+    accent_ = accent;
+    update();
+}
+
+void GlyphButton::setLabel(const QString &label)
+{
+    label_ = label;
+    update();
+}
+
+void GlyphButton::enterEvent(QEvent *event)
+{
+    hovered_ = true;
+    update();
+    QAbstractButton::enterEvent(event);
+}
+
+void GlyphButton::leaveEvent(QEvent *event)
+{
+    hovered_ = false;
+    update();
+    QAbstractButton::leaveEvent(event);
+}
+
+void GlyphButton::paintEvent(QPaintEvent *)
+{
+    QPainter painter(this);
+    painter.setRenderHint(QPainter::Antialiasing, true);
+
+    const QColor background = accent_ ? SightlineStyle::teal()
+                                      : (hovered_ ? QColor(0x2E, 0x39, 0x3C)
+                                                  : SightlineStyle::raise());
+    painter.fillRect(rect(), isDown() ? background.darker(120) : background);
+
+    painter.setPen(QPen(SightlineStyle::line(), 1));
+    painter.setRenderHint(QPainter::Antialiasing, false);
+    painter.drawRect(rect().adjusted(0, 0, -1, -1));
+    painter.setRenderHint(QPainter::Antialiasing, true);
+
+    const QColor ink = accent_ ? QColor(0x0C, 0x12, 0x13)
+                               : (hovered_ ? SightlineStyle::text() : SightlineStyle::dim());
+
+    if (!label_.isEmpty()) {
+        painter.setRenderHint(QPainter::Antialiasing, false);
+        painter.setFont(SightlinePaint::monoFont(10, accent_));
+        painter.setPen(ink);
+        painter.drawText(rect(), Qt::AlignCenter, label_);
+        return;
+    }
+
+    painter.setBrush(ink);
+    painter.setPen(Qt::NoPen);
+
+    const QPointF centre(width() / 2.0, height() / 2.0);
+    const double size = 5.0;
+
+    switch (glyph_) {
+    case Play: {
+        QPolygonF triangle;
+        triangle << QPointF(centre.x() - size + 1, centre.y() - size)
+                 << QPointF(centre.x() + size + 1, centre.y())
+                 << QPointF(centre.x() - size + 1, centre.y() + size);
+        painter.drawPolygon(triangle);
+        break;
+    }
+    case Pause:
+        painter.drawRect(QRectF(centre.x() - 4.5, centre.y() - size, 3.0, size * 2));
+        painter.drawRect(QRectF(centre.x() + 1.5, centre.y() - size, 3.0, size * 2));
+        break;
+    case Previous:
+    case Next: {
+        const double direction = (glyph_ == Next) ? 1.0 : -1.0;
+        QPolygonF first;
+        first << QPointF(centre.x() - direction * 5.0, centre.y() - size)
+              << QPointF(centre.x() + direction * 1.0, centre.y())
+              << QPointF(centre.x() - direction * 5.0, centre.y() + size);
+        painter.drawPolygon(first);
+        painter.drawRect(QRectF(centre.x() + direction * 2.0 - (direction > 0 ? 0 : 2.0),
+                                centre.y() - size, 2.0, size * 2));
+        break;
+    }
+    case StepBack:
+    case StepForward: {
+        const double direction = (glyph_ == StepForward) ? 1.0 : -1.0;
+        QPolygonF a, b;
+        a << QPointF(centre.x() - direction * 6.0, centre.y() - size)
+          << QPointF(centre.x() - direction * 0.5, centre.y())
+          << QPointF(centre.x() - direction * 6.0, centre.y() + size);
+        b << QPointF(centre.x() + direction * 0.5, centre.y() - size)
+          << QPointF(centre.x() + direction * 6.0, centre.y())
+          << QPointF(centre.x() + direction * 0.5, centre.y() + size);
+        painter.drawPolygon(a);
+        painter.drawPolygon(b);
+        break;
+    }
+    case Fullscreen: {
+        painter.setBrush(Qt::NoBrush);
+        painter.setPen(QPen(ink, 1.4));
+        painter.setRenderHint(QPainter::Antialiasing, false);
+        const int m = 6;
+        painter.drawLine(m, m, m + 4, m);
+        painter.drawLine(m, m, m, m + 3);
+        painter.drawLine(width() - m, m, width() - m - 4, m);
+        painter.drawLine(width() - m, m, width() - m, m + 3);
+        painter.drawLine(m, height() - m, m + 4, height() - m);
+        painter.drawLine(m, height() - m, m, height() - m - 3);
+        painter.drawLine(width() - m, height() - m, width() - m - 4, height() - m);
+        painter.drawLine(width() - m, height() - m, width() - m, height() - m - 3);
+        break;
+    }
+    case Pip: {
+        painter.setBrush(Qt::NoBrush);
+        painter.setPen(QPen(ink, 1.2));
+        painter.setRenderHint(QPainter::Antialiasing, false);
+        painter.drawRect(QRect(6, 6, width() - 12, height() - 12));
+        painter.fillRect(QRect(width() - 12, height() - 11, 6, 5), ink);
+        break;
+    }
+    case Captions: {
+        painter.setRenderHint(QPainter::Antialiasing, false);
+        painter.setFont(SightlinePaint::monoFont(9, true));
+        painter.setPen(ink);
+        painter.setBrush(Qt::NoBrush);
+        painter.drawText(rect(), Qt::AlignCenter, QString::fromLatin1("CC"));
+        break;
+    }
+    case Bell: {
+        painter.setBrush(Qt::NoBrush);
+        painter.setPen(QPen(ink, 1.2));
+        painter.drawArc(QRectF(centre.x() - 5, centre.y() - 5, 10, 9), 0, 180 * 16);
+        painter.drawLine(QPointF(centre.x() - 6, centre.y() + 4),
+                         QPointF(centre.x() + 6, centre.y() + 4));
+        painter.drawPoint(QPointF(centre.x(), centre.y() + 6));
+        break;
+    }
+    default: {
+        painter.setBrush(Qt::NoBrush);
+        painter.setPen(QPen(ink, 1.2));
+        QPolygonF speaker;
+        speaker << QPointF(centre.x() - 6, centre.y() - 2)
+                << QPointF(centre.x() - 3, centre.y() - 2)
+                << QPointF(centre.x(), centre.y() - 5)
+                << QPointF(centre.x(), centre.y() + 5)
+                << QPointF(centre.x() - 3, centre.y() + 2)
+                << QPointF(centre.x() - 6, centre.y() + 2);
+        painter.drawPolygon(speaker);
+        break;
+    }
+    }
+}
+
 // ================================================================ StatBarRow
 
 StatBarRow::StatBarRow(QWidget *parent)

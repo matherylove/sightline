@@ -37,6 +37,8 @@ int main(int argc, char *argv[])
     qRegisterMetaType<QList<PlaylistItem> >("QList<PlaylistItem>");
     qRegisterMetaType<QList<VideoComment> >("QList<VideoComment>");
     qRegisterMetaType<QList<SponsorSegment> >("QList<SponsorSegment>");
+    qRegisterMetaType<LyricLine>("LyricLine");
+    qRegisterMetaType<QList<LyricLine> >("QList<LyricLine>");
 
     // Decided once, up front: everything gated on the Windows version asks
     // this rather than testing for itself.

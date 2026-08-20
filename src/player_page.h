@@ -58,7 +58,9 @@ public:
     explicit CommentRow(QWidget *parent = 0);
 
     void setComment(const VideoComment &comment);
+    void setAvatar(const QPixmap &avatar);
     void setWidthHint(int width);
+    QString avatarKey() const;
 
 protected:
     void paintEvent(QPaintEvent *event);
@@ -67,6 +69,7 @@ private:
     int measuredHeight(int width) const;
 
     VideoComment comment_;
+    QPixmap avatar_;
 };
 
 // The player: canvas, transport with segments, channel row with subscribe,
@@ -138,8 +141,8 @@ private:
     VideoSurface *surface_;
     SeekBar *seek_;
     QLabel *timeLabel_;
-    QPushButton *playButton_;
-    QPushButton *rateButton_;
+    class GlyphButton *playButton_;
+    class GlyphButton *rateButton_;
     QSlider *volumeSlider_;
 
     QLabel *avatar_;
@@ -158,6 +161,7 @@ private:
     QPushButton *autoplayButton_;
 
     QList<RecommendationRow *> recommendationRows_;
+    QList<CommentRow *> commentRows_;
     VideoItem video_;
     QList<VideoItem> recommendations_;
     QString currentItag_;

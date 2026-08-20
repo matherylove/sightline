@@ -30,6 +30,7 @@ class Sidebar;
 class SightlineStatusBar;
 class SightlineTitleBar;
 class SponsorBlock;
+class LyricsService;
 class StatsPage;
 class VideoGrid;
 class YtDlp;
@@ -84,6 +85,9 @@ private slots:
 
     void onOfferYtDlpDownload();
     void onFrameReady(const QImage &frame);
+    void onGpuFramePresented();
+    void onLyricsReady(const QString &videoId, const QList<LyricLine> &lines, bool synced);
+    void onLyricsMissing(const QString &videoId);
     void onSurfaceResized(const QSize &size);
     void onUrlExpired();
     void onPlaybackFailed(const QString &message);
@@ -125,6 +129,7 @@ private:
     ListeningStats *stats_;
     YtDlp *extractor_;
     SponsorBlock *sponsorBlock_;
+    LyricsService *lyrics_;
     PlaybackController *playback_;
 
     SightlineTitleBar *titleBar_;

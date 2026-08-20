@@ -296,6 +296,39 @@ private:
     QRect undoRect_;
 };
 
+// A transport button whose icon is painted, not typed.
+//
+// Tahoma — the XP interface font, and the one this whole layout is measured
+// against — has no glyph for U+275A or U+23EE. Using them produced an empty
+// teal square where the play button should be. Drawing the shapes removes the
+// dependency on any font having them.
+class GlyphButton : public QAbstractButton
+{
+    Q_OBJECT
+
+public:
+    enum Glyph { Play, Pause, Previous, Next, StepBack, StepForward,
+                 Fullscreen, Captions, Pip, Volume, Bell };
+
+    GlyphButton(Glyph glyph, QWidget *parent = 0);
+
+    void setGlyph(Glyph glyph);
+    void setAccent(bool accent);
+    void setLabel(const QString &label);   // for "-10", "+10", "1x"
+
+protected:
+    void paintEvent(QPaintEvent *event);
+    void enterEvent(QEvent *event);
+    void leaveEvent(QEvent *event);
+    QSize sizeHint() const;
+
+private:
+    Glyph glyph_;
+    bool accent_;
+    bool hovered_;
+    QString label_;
+};
+
 // ---------------------------------------------------------------------------
 // A horizontal bar chart row for the statistics screen.
 // ---------------------------------------------------------------------------

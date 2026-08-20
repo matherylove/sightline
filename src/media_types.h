@@ -76,6 +76,7 @@ struct VideoComment
     QString id;
     QString parentId;        // "root" for top level
     QString author;
+    QString authorThumbnail;
     QString text;
     int likeCount;
     int replyCount;
@@ -209,5 +210,6 @@ Q_DECLARE_METATYPE(ChannelItem)
 Q_DECLARE_METATYPE(PlaylistItem)
 Q_DECLARE_METATYPE(VideoComment)
 Q_DECLARE_METATYPE(SponsorSegment)
+Q_DECLARE_METATYPE(LyricLine)
 
 #endif

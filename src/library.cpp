@@ -555,7 +555,15 @@ QList<VideoItem> Library::subscriptionFeed(int limit) const
 
 QString Library::thumbnailFile(const QString &videoId) const
 {
-    return paths_.thumbnails() + QString::fromLatin1("/") + videoId + QString::fromLatin1(".jpg");
+    // Keys can carry characters a filename cannot, so anything outside a
+    // safe set is replaced rather than trusted.
+    QString safe = videoId;
+    for (int i = 0; i < safe.size(); ++i) {
+        const QChar c = safe.at(i);
+        if (!c.isLetterOrNumber() && c != QLatin1Char('_') && c != QLatin1Char('-'))
+            safe[i] = QLatin1Char('_');
+    }
+    return paths_.thumbnails() + QString::fromLatin1("/") + safe + QString::fromLatin1(".jpg");
 }
 
 QPixmap Library::thumbnailIfPresent(const QString &videoId) const
@@ -606,6 +614,26 @@ QPixmap Library::channelAvatar(const ChannelItem &channel)
 
     if (!channel.avatarUrl.isEmpty())
         fetcher_->request(key, channel.avatarUrl);
+    return QPixmap();
+}
+
+QPixmap Library::avatarFor(const QString &key, const QString &url)
+{
+    if (key.isEmpty())
+        return QPixmap();
+    if (pixmapCache_.contains(key))
+        return pixmapCache_.value(key);
+
+    const QString path = thumbnailFile(key);
+    if (QFileInfo(path).isFile()) {
+        QPixmap pixmap;
+        if (pixmap.load(path)) {
+            pixmapCache_.insert(key, pixmap);
+            return pixmap;
+        }
+    }
+    if (!url.isEmpty())
+        fetcher_->request(key, url);
     return QPixmap();
 }
 

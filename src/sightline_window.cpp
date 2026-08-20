@@ -264,7 +264,11 @@ SightlineDialog::SightlineDialog(const QString &title, QWidget *parent)
 
 void SightlineDialog::setDialogWidth(int width)
 {
-    setFixedWidth(width);
+    // Fixed across, free down: a dialog whose text wraps needs to be able to
+    // grow, and setFixedWidth alone left several of them clipping content.
+    setMinimumWidth(width);
+    setMaximumWidth(width);
+    adjustSize();
 }
 
 void SightlineDialog::setDialogTitle(const QString &title)

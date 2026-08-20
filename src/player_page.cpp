@@ -159,6 +159,19 @@ int CommentRow::measuredHeight(int width) const
     return 9 + 16 + 4 + bounds.height() + 5 + 12 + 9;
 }
 
+void CommentRow::setAvatar(const QPixmap &avatar)
+{
+    avatar_ = avatar;
+    update();
+}
+
+QString CommentRow::avatarKey() const
+{
+    // Prefixed so the cache cannot collide with a video or a channel of the
+    // same identifier.
+    return QString::fromLatin1("cm_") + comment_.author;
+}
+
 void CommentRow::setWidthHint(int width)
 {
     setFixedHeight(measuredHeight(width));
@@ -179,9 +192,13 @@ void CommentRow::paintEvent(QPaintEvent *)
     int y = 9;
     const int textWidth = qMax(40, width() - indent - 10);
 
-    // Avatar, name, pinned badge, age.
-    painter.fillRect(QRect(indent, y, 16, 16), QColor(0x22, 0x40, 0x3F));
-    SightlinePaint::drawFrame(painter, QRect(indent, y, 16, 16), SightlineStyle::line());
+    // Avatar, name, pinned badge, age. The picture is drawn when it has
+    // arrived and the seeded placeholder stands in until then, so the row
+    // never shifts.
+    const QRect avatarRect(indent, y, 16, 16);
+    SightlinePaint::drawArtwork(painter, avatarRect, avatar_,
+                                comment_.author.isEmpty() ? comment_.id : comment_.author);
+    SightlinePaint::drawFrame(painter, avatarRect, SightlineStyle::line());
 
     int x = indent + 23;
     painter.setFont(SightlinePaint::uiFont(10, true));
@@ -265,15 +282,17 @@ QLabel *paneHeading(const QString &text, QWidget *parent)
     return label;
 }
 
-QPushButton *transportButton(const QString &text, QWidget *parent, bool accent = false)
+GlyphButton *glyphButton(GlyphButton::Glyph glyph, QWidget *parent, bool accent = false)
 {
-    QPushButton *button = new QPushButton(text, parent);
-    button->setObjectName(accent ? QString::fromLatin1("primaryButton")
-                                 : QString::fromLatin1("iconButton"));
-    button->setFixedHeight(22);
-    button->setMinimumWidth(24);
-    button->setFocusPolicy(Qt::NoFocus);
-    button->setFont(SightlinePaint::uiFont(10));
+    GlyphButton *button = new GlyphButton(glyph, parent);
+    button->setAccent(accent);
+    return button;
+}
+
+GlyphButton *labelButton(const QString &label, QWidget *parent)
+{
+    GlyphButton *button = new GlyphButton(GlyphButton::Play, parent);
+    button->setLabel(label);
     return button;
 }
 
@@ -342,27 +361,27 @@ QWidget *PlayerPage::buildTransport()
     // Every transport control is the same 26x22. A single oversized play
     // button with nothing beside it reads as a placeholder, and skipping is
     // the thing people reach for most after pause.
-    QPushButton *previous = transportButton(QString::fromUtf8("\xE2\x8F\xAE"), transport);
+    GlyphButton *previous = glyphButton(GlyphButton::Previous, transport);
     previous->setToolTip(QString::fromUtf8("Anterior"));
     connect(previous, SIGNAL(clicked()), this, SIGNAL(previousRequested()));
     row->addWidget(previous);
 
-    QPushButton *back = transportButton(QString::fromUtf8("-10"), transport);
+    GlyphButton *back = labelButton(QString::fromLatin1("-10"), transport);
     back->setToolTip(QString::fromUtf8("Retroceder 10 s  (\xE2\x86\x90)"));
     connect(back, SIGNAL(clicked()), this, SLOT(onStepBack()));
     row->addWidget(back);
 
-    playButton_ = transportButton(QString::fromUtf8("\xE2\x9D\x9A\xE2\x9D\x9A"), transport, true);
+    playButton_ = glyphButton(GlyphButton::Pause, transport, true);
     playButton_->setToolTip(QString::fromUtf8("Reproducir / pausar  (Espacio)"));
     connect(playButton_, SIGNAL(clicked()), playback_, SLOT(togglePause()));
     row->addWidget(playButton_);
 
-    QPushButton *forward = transportButton(QString::fromUtf8("+10"), transport);
+    GlyphButton *forward = labelButton(QString::fromLatin1("+10"), transport);
     forward->setToolTip(QString::fromUtf8("Avanzar 10 s  (\xE2\x86\x92)"));
     connect(forward, SIGNAL(clicked()), this, SLOT(onStepForward()));
     row->addWidget(forward);
 
-    QPushButton *next = transportButton(QString::fromUtf8("\xE2\x8F\xAD"), transport);
+    GlyphButton *next = glyphButton(GlyphButton::Next, transport);
     next->setToolTip(QString::fromUtf8("Siguiente"));
     connect(next, SIGNAL(clicked()), this, SLOT(onNextClicked()));
     row->addWidget(next);
@@ -388,17 +407,17 @@ QWidget *PlayerPage::buildTransport()
     connect(volumeSlider_, SIGNAL(valueChanged(int)), this, SLOT(onVolumeChanged(int)));
     row->addWidget(volumeSlider_);
 
-    rateButton_ = transportButton(QString::fromLatin1("1x"), transport);
+    rateButton_ = labelButton(QString::fromLatin1("1x"), transport);
     rateButton_->setToolTip(QString::fromUtf8("Velocidad de reproducci\xC3\xB3n"));
     connect(rateButton_, SIGNAL(clicked()), this, SLOT(onCycleRate()));
     row->addWidget(rateButton_);
 
-    QPushButton *pip = transportButton(QString::fromLatin1("PiP"), transport);
+    GlyphButton *pip = glyphButton(GlyphButton::Pip, transport);
     pip->setToolTip(QString::fromUtf8("Ventana flotante"));
     connect(pip, SIGNAL(clicked()), this, SIGNAL(pipRequested()));
     row->addWidget(pip);
 
-    QPushButton *fullscreen = transportButton(QString::fromUtf8("\xE2\x9B\xB6"), transport);
+    GlyphButton *fullscreen = glyphButton(GlyphButton::Fullscreen, transport);
     fullscreen->setToolTip(QString::fromUtf8("Pantalla completa  (F)"));
     connect(fullscreen, SIGNAL(clicked()), this, SIGNAL(fullscreenRequested()));
     row->addWidget(fullscreen);
@@ -440,7 +459,7 @@ void PlayerPage::onCycleRate()
             index = (i + 1) % 4;
     }
     playback_->setRate(rates[index]);
-    rateButton_->setText(QString::number(rates[index], 'g', 3) + QString::fromLatin1("x"));
+    rateButton_->setLabel(QString::number(rates[index], 'g', 3) + QString::fromLatin1("x"));
 }
 
 QWidget *PlayerPage::buildChannelRow()
@@ -483,9 +502,7 @@ QWidget *PlayerPage::buildChannelRow()
     connect(subscribeButton_, SIGNAL(clicked()), this, SLOT(onSubscribeClicked()));
     layout->addWidget(subscribeButton_);
 
-    QPushButton *bell = new QPushButton(QString::fromUtf8("\xE2\x97\x94"), actions);
-    bell->setObjectName(QString::fromLatin1("iconButton"));
-    bell->setFixedSize(24, 22);
+    GlyphButton *bell = new GlyphButton(GlyphButton::Bell, actions);
     bell->setToolTip(QString::fromUtf8("Avisarme de vídeos nuevos"));
     layout->addWidget(bell);
 
@@ -730,13 +747,23 @@ bool PlayerPage::autoplayEnabled() const
     return true;
 }
 
-void PlayerPage::onThumbnailReady(const QString &videoId)
+void PlayerPage::onThumbnailReady(const QString &key)
 {
     if (!library_)
         return;
+
+    if (key.startsWith(QLatin1String("cm_"))) {
+        const QPixmap avatar = library_->thumbnailIfPresent(key);
+        for (int i = 0; i < commentRows_.size(); ++i) {
+            if (commentRows_.at(i)->avatarKey() == key)
+                commentRows_.at(i)->setAvatar(avatar);
+        }
+        return;
+    }
+
     for (int i = 0; i < recommendationRows_.size(); ++i) {
-        if (recommendationRows_.at(i)->videoId() == videoId)
-            recommendationRows_.at(i)->setArtwork(library_->thumbnailIfPresent(videoId));
+        if (recommendationRows_.at(i)->videoId() == key)
+            recommendationRows_.at(i)->setArtwork(library_->thumbnailIfPresent(key));
     }
 }
 
@@ -763,12 +790,21 @@ void PlayerPage::setComments(const QList<VideoComment> &comments)
     commentsHead_->setText(QString::fromUtf8("%1 comentarios").arg(comments.size()));
 
     QWidget *inner = commentsLayout_->parentWidget();
+    commentRows_.clear();
     int insertAt = 1;
     for (int i = 0; i < comments.size(); ++i) {
         CommentRow *row = new CommentRow(inner);
         row->setComment(comments.at(i));
         row->setWidthHint(288);
         commentsLayout_->insertWidget(insertAt++, row);
+        commentRows_.append(row);
+
+        if (library_ && !comments.at(i).authorThumbnail.isEmpty()) {
+            const QPixmap cached = library_->avatarFor(row->avatarKey(),
+                                                       comments.at(i).authorThumbnail);
+            if (!cached.isNull())
+                row->setAvatar(cached);
+        }
     }
 
     QLabel *note = new QLabel(QString::fromUtf8(
@@ -997,8 +1033,7 @@ void PlayerPage::setChannelAvatar(const QPixmap &avatar)
 
 void PlayerPage::setPlaying(bool playing)
 {
-    playButton_->setText(playing ? QString::fromUtf8("\xE2\x9D\x9A\xE2\x9D\x9A")
-                                 : QString::fromUtf8("\xE2\x96\xB6"));
+    playButton_->setGlyph(playing ? GlyphButton::Pause : GlyphButton::Play);
 }
 
 

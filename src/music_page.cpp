@@ -255,7 +255,7 @@ void LyricsView::paintEvent(QPaintEvent *)
 MusicPage::MusicPage(Library *library, PlaybackController *playback, QWidget *parent)
     : QWidget(parent),
       library_(library), playback_(playback),
-      albumTile_(0), nowTile_(0),
+      albumTile_(0), nowTile_(0), playPause_(0),
       albumTitle_(0), albumSubtitle_(0), albumKind_(0), trackLayout_(0),
       lyrics_(0), lyricsPanel_(0), lyricsButton_(0), lyricsStatus_(0),
       nowTitle_(0), nowArtist_(0), nowTime_(0), nowSeek_(0)
@@ -301,7 +301,7 @@ MusicPage::MusicPage(Library *library, PlaybackController *playback, QWidget *pa
     buttons->setSpacing(6);
     buttons->setContentsMargins(0, 7, 0, 0);
 
-    QPushButton *play = new QPushButton(QString::fromUtf8("\xE2\x96\xB8 Reproducir"), meta);
+    QPushButton *play = new QPushButton(QString::fromUtf8("Reproducir"), meta);
     play->setObjectName(QString::fromLatin1("primaryButton"));
     play->setFixedHeight(20);
     buttons->addWidget(play);
@@ -328,6 +328,7 @@ MusicPage::MusicPage(Library *library, PlaybackController *playback, QWidget *pa
     metaLayout->addStretch(1);
 
     heroLayout->addWidget(meta, 1);
+    hero->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
     mainLayout->addWidget(hero);
 
     // --- track list -------------------------------------------------------
@@ -341,7 +342,14 @@ MusicPage::MusicPage(Library *library, PlaybackController *playback, QWidget *pa
     trackLayout_->setContentsMargins(0, 0, 0, 0);
     trackLayout_->setSpacing(0);
     trackLayout_->addStretch(1);
+
+    // Top aligned inside the scroll area. Without this the list floated in
+    // the middle of a very tall empty region, which is what the screenshot
+    // showed: four rows adrift in a black field.
+    inner->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Maximum);
     scroll->setWidget(inner);
+    scroll->setAlignment(Qt::AlignTop);
+    scroll->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
     mainLayout->addWidget(scroll, 1);
 
     // --- now playing bar --------------------------------------------------
@@ -372,20 +380,17 @@ MusicPage::MusicPage(Library *library, PlaybackController *playback, QWidget *pa
     textLayout->addWidget(nowArtist_);
     nowLayout->addWidget(text);
 
-    QPushButton *previous = new QPushButton(QString::fromUtf8("\xE2\x97\x82\xE2\x97\x82"), nowBar);
-    previous->setObjectName(QString::fromLatin1("iconButton"));
-    previous->setFixedSize(24, 22);
+    GlyphButton *previous = new GlyphButton(GlyphButton::Previous, nowBar);
+    previous->setToolTip(QString::fromUtf8("Anterior"));
     nowLayout->addWidget(previous);
 
-    QPushButton *playPause = new QPushButton(QString::fromUtf8("\xE2\x9D\x9A\xE2\x9D\x9A"), nowBar);
-    playPause->setObjectName(QString::fromLatin1("primaryButton"));
-    playPause->setFixedSize(24, 22);
-    connect(playPause, SIGNAL(clicked()), playback_, SLOT(togglePause()));
-    nowLayout->addWidget(playPause);
+    playPause_ = new GlyphButton(GlyphButton::Pause, nowBar);
+    playPause_->setAccent(true);
+    connect(playPause_, SIGNAL(clicked()), playback_, SLOT(togglePause()));
+    nowLayout->addWidget(playPause_);
 
-    QPushButton *next = new QPushButton(QString::fromUtf8("\xE2\x96\xB8\xE2\x96\xB8"), nowBar);
-    next->setObjectName(QString::fromLatin1("iconButton"));
-    next->setFixedSize(24, 22);
+    GlyphButton *next = new GlyphButton(GlyphButton::Next, nowBar);
+    next->setToolTip(QString::fromUtf8("Siguiente"));
     nowLayout->addWidget(next);
 
     nowSeek_ = new SeekBar(nowBar);
@@ -430,7 +435,7 @@ MusicPage::MusicPage(Library *library, PlaybackController *playback, QWidget *pa
     lyricsStatus_->setContentsMargins(12, 8, 12, 8);
     lyricsStatus_->setStyleSheet(QString::fromLatin1("border-top: 1px solid #333E42;"));
     lyricsStatus_->setText(QString::fromUtf8(
-        "Pulsa una línea para saltar a ese segundo.\nSe guarda junto al archivo como .lrc"));
+        "Se buscan en LRCLIB al reproducir.\nSe guardan como .lrc en la caché."));
     lyricsLayout->addWidget(lyricsStatus_);
 
     root->addWidget(lyricsPanel_);
